@@ -6,7 +6,7 @@
 import Foundation
 import Observation
 
-/// Cursor-based infinite list, shared by the explore feed and notifications.
+/// Cursor-based infinite list, shared by the explore feed, 私信 and notifications.
 @Observable
 final class Pager<Item: Identifiable & Sendable> {
     struct Page {

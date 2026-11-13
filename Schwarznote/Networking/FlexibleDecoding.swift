@@ -27,13 +27,22 @@ nonisolated extension KeyedDecodingContainer where Key == AnyKey {
         return nil
     }
 
-    func double(_ key: String) -> Double? {
-        (try? decode(Double.self, forKey: AnyKey(key))) ?? string(key).flatMap(Double.init)
+    /// First of `keys` that holds a number or a numeric string.
+    func double(_ keys: String...) -> Double? {
+        for key in keys {
+            if let value = (try? decode(Double.self, forKey: AnyKey(key))) ?? string(key).flatMap(Double.init) {
+                return value
+            }
+        }
+        return nil
     }
 
     /// Timestamps come in seconds in some endpoints and milliseconds in others.
-    func date(_ key: String) -> Date? {
-        double(key).map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) }
+    func date(_ keys: String...) -> Date? {
+        for key in keys {
+            if let value = double(key) { return Date(timeIntervalSince1970: value > 1e12 ? value / 1000 : value) }
+        }
+        return nil
     }
 
     func value<T: Decodable>(_ type: T.Type, _ keys: String...) -> T? {

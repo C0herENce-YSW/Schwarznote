@@ -10,6 +10,12 @@ nonisolated struct Author: Hashable, Sendable, Decodable {
     let nickname: String
     let avatarURL: URL?
 
+    init(id: String, nickname: String, avatarURL: URL?) {
+        self.id = id
+        self.nickname = nickname
+        self.avatarURL = avatarURL
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         id = c.string("user_id", "userid") ?? ""

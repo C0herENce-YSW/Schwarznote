@@ -5,10 +5,10 @@
 
 import SwiftUI
 
-/// App shell modeled on the web client's left navigation: 发现 / 搜索 / 通知 / 我, plus 设置.
+/// App shell modeled on the web client's left navigation: 发现 / 搜索 / 消息 / 我, plus 设置.
 /// Browsing works without logging in, like on the web.
 struct MainView: View {
-    enum TabID: String { case explore, search, notifications, me, settings }
+    enum TabID: String { case explore, search, messages, me, settings }
 
     /// Start tab can be set with a launch argument, e.g. `-selectedTab me`.
     @State private var selection = UserDefaults.standard.string(forKey: "selectedTab")
@@ -38,8 +38,8 @@ struct MainView: View {
                 Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
                     SearchView()
                 }
-                Tab("通知", systemImage: "bell", value: .notifications) {
-                    NotificationsView()
+                Tab("消息", systemImage: "bubble.left.and.bubble.right", value: .messages) {
+                    MessagesView()
                 }
                 Tab("我", systemImage: "person", value: TabID.me) {
                     ProfileView()
@@ -58,9 +58,9 @@ struct MainView: View {
                 SearchView()
                     .tabItem { Label("搜索", systemImage: "magnifyingglass") }
                     .tag(TabID.search)
-                NotificationsView()
-                    .tabItem { Label("通知", systemImage: "bell") }
-                    .tag(TabID.notifications)
+                MessagesView()
+                    .tabItem { Label("消息", systemImage: "bubble.left.and.bubble.right") }
+                    .tag(TabID.messages)
                 ProfileView()
                     .tabItem { Label("我", systemImage: "person") }
                     .tag(TabID.me)

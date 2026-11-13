@@ -127,16 +127,39 @@ final class XHSClient {
         return .init(items: page.messages, cursor: page.cursor, hasMore: page.hasMore)
     }
 
+    // MARK: - 私信
+
+    /// Conversations, newest first. `cursor` is the page number as a string ("" = first page).
+    func chats(cursor: String) async throws -> Pager<Chat>.Page {
+        let page = Int(cursor) ?? 0
+        let limit = 50
+        let payload: ChatListPayload = try await get("/api/im/web/v3/chats" + Self.query([
+            "limit": String(limit), "complete": "true", "page": String(page), "source": "pc",
+        ]))
+        return .init(items: payload.chats, cursor: String(page + 1), hasMore: payload.chats.count >= limit)
+    }
+
+    /// Up to `limit` messages with a store ID of at most `lastStoreID`, oldest first.
+    /// Pass the conversation's `maxStoreID` for the latest messages, or the oldest loaded
+    /// store ID minus one for earlier ones. Doesn't mark anything as read.
+    func chatMessages(userID: String, lastStoreID: Int, limit: Int = 30) async throws -> [ChatMessage] {
+        let payload: ChatHistoryPayload = try await get("/api/im/web/messages/history" + Self.query([
+            "chat_user_id": userID, "last_id": String(lastStoreID), "start_id": "0", "limit": String(limit),
+        ]))
+        return payload.messages.sorted { $0.storeID < $1.storeID }
+    }
+
     // MARK: - Note detail
 
     /// Full note: text, every image / live photo or the video, and interaction counts.
-    /// `xsecToken` comes from the feed card the note was opened from.
-    func noteDetail(id: String, xsecToken: String) async throws -> NoteDetail {
+    /// `xsecToken` and `xsecSource` come from where the note was opened: a feed card
+    /// ("pc_feed") or the link of a note shared in 私信.
+    func noteDetail(id: String, xsecToken: String, xsecSource: String = "pc_feed") async throws -> NoteDetail {
         let payload: NoteDetailPayload = try await post("/api/sns/web/v1/feed", body: [
             "extra": ["need_body_topic": "1"],
             "image_formats": ["jpg", "webp", "avif"],
             "source_note_id": id,
-            "xsec_source": "pc_feed",
+            "xsec_source": xsecSource,
             "xsec_token": xsecToken,
         ])
         return payload.note
