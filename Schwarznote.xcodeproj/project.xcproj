@@ -39,6 +39,8 @@
         "DEVELOPMENT_TEAM": "34B6CR653F",
         "ENABLE_PREVIEWS": "YES",
         "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_FILE": "Schwarznote-Info.plist",
+        "INFOPLIST_KEY_NSLocalNetworkUsageDescription": "用于连接你 Mac 上的签名服务",
         "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
         "INFOPLIST_KEY_UIUserInterfaceStyle": "Automatic",
         "LD_RUNPATH_SEARCH_PATHS": [

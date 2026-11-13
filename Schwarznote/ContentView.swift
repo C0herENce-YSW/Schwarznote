@@ -8,17 +8,24 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(AuthModel.self) private var auth
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            switch auth.state {
+            case .restoring:
+                ProgressView()
+            case .loggedOut:
+                LoginView()
+            case .loggedIn(let user):
+                HomeView(user: user)
+            }
         }
-        .padding()
+        .task { await auth.restore() }
     }
 }
 
 #Preview {
     ContentView()
+        .environment(AuthModel())
 }
