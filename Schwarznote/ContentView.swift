@@ -11,17 +11,8 @@ struct ContentView: View {
     @Environment(AuthModel.self) private var auth
 
     var body: some View {
-        Group {
-            switch auth.state {
-            case .restoring:
-                ProgressView()
-            case .loggedOut:
-                LoginView()
-            case .loggedIn(let user):
-                HomeView(user: user)
-            }
-        }
-        .task { await auth.restore() }
+        MainView()
+            .task { await auth.restore() }
     }
 }
 
