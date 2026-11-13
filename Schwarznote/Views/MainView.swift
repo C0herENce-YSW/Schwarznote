@@ -180,13 +180,19 @@ struct ProfileView: View {
     @Environment(AuthModel.self) private var auth
 
     var body: some View {
-        switch auth.state {
-        case .restoring:
-            ProgressView()
-        case .loggedOut:
-            LoginView()
-        case .loggedIn(let user):
-            HomeView(user: user)
+        Group {
+            switch auth.state {
+            case .restoring:
+                ProgressView()
+            case .loggedOut:
+                LoginView()
+            case .loggedIn(let user):
+                HomeView(user: user)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // The 我 tab sits at the far right, so its buttons (退出登录, 重试) aren't straight below it;
+        // a full-width focus section lets moving down from the tab reach them.
+        .focusSection()
     }
 }
