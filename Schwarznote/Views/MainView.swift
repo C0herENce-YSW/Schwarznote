@@ -101,15 +101,8 @@ struct TopTabBar: View {
         .padding(.top, 30)
         .padding(.bottom, 10)
         .focusSection()
-        .onChange(of: focused) { old, tab in
-            guard let tab else { return }
-            // Coming up from a page, the focus engine picks the tab nearest the focused item,
-            // which would switch pages; go back to the current tab instead.
-            if old == nil, tab != selection {
-                focused = selection
-            } else {
-                selection = tab
-            }
+        .onChange(of: focused) { _, tab in
+            if let tab { selection = tab }
         }
         .onAppear { focused = selection }
         .onExitCommand { exitGuard.backPressedAtTop() }
@@ -126,6 +119,9 @@ struct TopTabBar: View {
         }
         .buttonStyle(ChipStyle(isSelected: tab == selection))
         .focused($focused, equals: tab)
+        // While a page has focus only the current tab can take it, so moving up lands there
+        // directly instead of on the nearest tab (which would switch pages).
+        .disabled(focused == nil && tab != selection)
     }
 
     /// The account's avatar, or a placeholder when logged out.
