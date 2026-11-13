@@ -184,16 +184,22 @@ struct PlayOnceVideoView: UIViewRepresentable {
 /// Full-screen player with the system transport controls. Menu closes it.
 struct VideoPlayerScreen: View {
     let url: URL
+    @Environment(ShortcutCenter.self) private var shortcuts
     @State private var player: AVPlayer?
 
     var body: some View {
         VideoPlayer(player: player)
             .ignoresSafeArea()
             .onAppear {
+                // Play/Pause belongs to the player here, not to the 点赞 shortcut.
+                shortcuts.isPaused = true
                 let player = AVPlayer(url: url)
                 self.player = player
                 player.play()
             }
-            .onDisappear { player?.pause() }
+            .onDisappear {
+                shortcuts.isPaused = false
+                player?.pause()
+            }
     }
 }

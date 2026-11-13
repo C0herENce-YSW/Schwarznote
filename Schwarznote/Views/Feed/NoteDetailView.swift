@@ -8,6 +8,7 @@ import SwiftUI
 /// Note detail like the web modal: media on the left; author, text, actions and comments on the right.
 struct NoteDetailView: View {
     @Environment(AuthModel.self) private var auth
+    @Environment(ShortcutCenter.self) private var shortcuts
     @Environment(\.dismiss) private var dismiss
     @State private var model: NoteDetailModel
     @State private var draft = ""
@@ -46,6 +47,8 @@ struct NoteDetailView: View {
         .ignoresSafeArea()
         .onExitCommand { dismiss() }
         .task { await model.load(client: auth.client) }
+        .onAppear { shortcuts.handler = handleShortcut }
+        .onDisappear { shortcuts.handler = nil }
         .alert("操作失败", isPresented: Binding(
             get: { model.actionError != nil },
             set: { if !$0 { model.actionError = nil } }
@@ -92,6 +95,19 @@ struct NoteDetailView: View {
     }
 
     // MARK: - Actions
+
+    private func handleShortcut(_ action: ShortcutAction) {
+        // Keys typed into the comment box are text, not shortcuts.
+        guard !composerFocused else { return }
+        switch action {
+        case .like: requireLogin { await model.toggleLike(client: auth.client) }
+        case .collect: requireLogin { await model.toggleCollect(client: auth.client) }
+        case .comment:
+            replyTarget = nil
+            composerFocused = true
+        case .backToTop: break
+        }
+    }
 
     private var actionBar: some View {
         HStack(spacing: 20) {
