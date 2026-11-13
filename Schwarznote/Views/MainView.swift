@@ -15,21 +15,39 @@ struct MainView: View {
         .flatMap(TabID.init(rawValue:)) ?? .explore
 
     var body: some View {
-        TabView(selection: $selection) {
-            Tab("发现", systemImage: "house", value: .explore) {
+        if #available(tvOS 18.0, *) {
+            TabView(selection: $selection) {
+                Tab("发现", systemImage: "house", value: .explore) {
+                    ExploreView()
+                }
+                Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
+                    SearchView()
+                }
+                Tab("通知", systemImage: "bell", value: .notifications) {
+                    LoginRequiredView(feature: "通知")
+                }
+                Tab("我", systemImage: "person", value: TabID.me) {
+                    ProfileView()
+                }
+            }
+            .tabViewStyle(.sidebarAdaptable)
+        } else {
+            // tvOS 17: classic top tab bar.
+            TabView(selection: $selection) {
                 ExploreView()
-            }
-            Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
+                    .tabItem { Label("发现", systemImage: "house") }
+                    .tag(TabID.explore)
                 SearchView()
-            }
-            Tab("通知", systemImage: "bell", value: .notifications) {
+                    .tabItem { Label("搜索", systemImage: "magnifyingglass") }
+                    .tag(TabID.search)
                 LoginRequiredView(feature: "通知")
-            }
-            Tab("我", systemImage: "person", value: TabID.me) {
+                    .tabItem { Label("通知", systemImage: "bell") }
+                    .tag(TabID.notifications)
                 ProfileView()
+                    .tabItem { Label("我", systemImage: "person") }
+                    .tag(TabID.me)
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
     }
 }
 
@@ -58,6 +76,9 @@ struct LoginRequiredView: View {
             systemImage: "lock",
             description: Text("请在“我”页面扫码登录")
         )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Focusable so the remote can move up from this page into the tab menu.
+        .focusable()
     }
 }
 
