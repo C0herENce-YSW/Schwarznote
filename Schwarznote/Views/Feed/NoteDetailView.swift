@@ -14,9 +14,17 @@ struct NoteDetailView: View {
     @State private var draft = ""
     @State private var replyTarget: Comment?
     @FocusState private var composerFocused: Bool
+    private let focusComposerOnOpen: Bool
 
     init(note: Note) {
         _model = State(initialValue: NoteDetailModel(note: note))
+        focusComposerOnOpen = false
+    }
+
+    /// Opens a note another screen already loaded, e.g. from the 评论 shortcut in the 私信 viewer.
+    init(model: NoteDetailModel, focusComposer: Bool) {
+        _model = State(initialValue: model)
+        focusComposerOnOpen = focusComposer
     }
 
     private var note: Note { model.note }
@@ -47,6 +55,12 @@ struct NoteDetailView: View {
         .ignoresSafeArea()
         .onExitCommand { dismiss() }
         .task { await model.load(client: auth.client) }
+        .task {
+            // Give the cover a moment to settle so the focus change sticks.
+            guard focusComposerOnOpen else { return }
+            try? await Task.sleep(for: .milliseconds(400))
+            composerFocused = true
+        }
         .onAppear { shortcuts.handler = handleShortcut }
         .onDisappear { shortcuts.handler = nil }
         .alert("操作失败", isPresented: Binding(
@@ -64,8 +78,8 @@ struct NoteDetailView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 20) {
-                AvatarView(author: note.author, size: 72)
-                Text(note.author.nickname)
+                AvatarView(author: model.detail?.author ?? note.author, size: 72)
+                Text((model.detail?.author ?? note.author).nickname)
                     .font(.title3.weight(.semibold))
             }
 

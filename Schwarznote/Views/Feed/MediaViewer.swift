@@ -7,13 +7,15 @@ import AVKit
 import SwiftUI
 
 /// Left side of the note detail. Multiple pages get a thumbnail strip: moving focus along it
-/// switches the big view, and selecting a thumbnail replays a live photo or opens the video.
+/// switches the big view (live photos play once as you land on them), and selecting a thumbnail
+/// opens that picture full screen, or the video player for a video.
 struct MediaViewer: View {
     let media: [MediaItem]
 
     @State private var index = 0
     @State private var playingLive = false
     @State private var fullScreenVideo: PlayableVideo?
+    @State private var fullScreenPhoto: PhotoPage?
     @FocusState private var focusedThumbnail: Int?
 
     private var current: MediaItem? {
@@ -27,11 +29,15 @@ struct MediaViewer: View {
 
             if media.count > 1 {
                 thumbnails
-            } else if let current, current.kind != .image {
+            } else if let current {
                 Button {
                     activate(current)
                 } label: {
-                    Label(current.kind == .video ? "播放视频" : "播放实况", systemImage: "play.fill")
+                    switch current.kind {
+                    case .image: Label("全屏查看", systemImage: "arrow.up.left.and.arrow.down.right")
+                    case .livePhoto: Label("全屏播放实况", systemImage: "livephoto")
+                    case .video: Label("播放视频", systemImage: "play.fill")
+                    }
                 }
             }
         }
@@ -49,6 +55,9 @@ struct MediaViewer: View {
         }
         .fullScreenCover(item: $fullScreenVideo) { video in
             VideoPlayerScreen(url: video.url)
+        }
+        .fullScreenCover(item: $fullScreenPhoto) { page in
+            PhotoViewerScreen(media: media, startAt: page.index)
         }
     }
 
@@ -109,11 +118,16 @@ struct MediaViewer: View {
     private func activate(_ item: MediaItem) {
         index = media.firstIndex(of: item) ?? index
         switch item.kind {
-        case .image: break
-        case .livePhoto: playingLive = true
+        case .image, .livePhoto: fullScreenPhoto = PhotoPage(index: index)
         case .video: fullScreenVideo = item.videoURL.map(PlayableVideo.init)
         }
     }
+}
+
+/// Which picture to open full screen; drives `fullScreenCover(item:)`.
+struct PhotoPage: Identifiable {
+    let index: Int
+    var id: Int { index }
 }
 
 /// Wraps a URL so it can drive `fullScreenCover(item:)`.

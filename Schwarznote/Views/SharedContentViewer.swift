@@ -7,7 +7,8 @@ import SwiftUI
 
 /// Full-screen viewer for what both people shared in a 私信 conversation: images and notes,
 /// oldest to newest. Swiping (or clicking) down goes to the next one, up to the previous one;
-/// left and right still move through a note's pictures. The back button closes it.
+/// left and right still move through a note's pictures, and selecting a picture opens it full
+/// screen. The 点赞 / 收藏 / 评论 shortcuts act on the note on screen. The back button closes it.
 struct SharedContentViewer: View {
     let model: ChatModel
 
@@ -15,10 +16,12 @@ struct SharedContentViewer: View {
     @Environment(ShortcutCenter.self) private var shortcuts
     @State private var currentID: String
     @State private var forward = true
-    @State private var details: [String: NoteDetail] = [:]
-    @State private var failures: [String: String] = [:]
-    @State private var edgeHint: String?
+    /// One per shared note, keyed by note ID, so likes survive paging back and forth.
+    @State private var notes: [String: NoteDetailModel] = [:]
+    @State private var toast: String?
     @State private var lastStep = Date.distantPast
+    @State private var fullScreenImage: URL?
+    @State private var commenting: NoteDetailModel?
     @FocusState private var pageFocused: Bool
 
     init(model: ChatModel, startAt messageID: String) {
@@ -45,7 +48,7 @@ struct SharedContentViewer: View {
         .clipped()
         .background(Color.black.ignoresSafeArea())
         .overlay(alignment: .top) { topBar }
-        .overlay(alignment: .bottom) { edgeHintView }
+        .overlay(alignment: .bottom) { toastView }
         .background(SwipeMonitor { direction in
             step(direction == .down ? 1 : -1)
         })
@@ -57,7 +60,29 @@ struct SharedContentViewer: View {
             }
         }
         .task(id: currentID) { await loadNote() }
-        .onAppear { pageFocused = true }
+        .onAppear {
+            pageFocused = true
+            shortcuts.handler = handleShortcut
+        }
+        .onDisappear { shortcuts.handler = nil }
+        .fullScreenCover(item: Binding(
+            get: { fullScreenImage.map { PlayableVideo(url: $0) } },
+            set: { fullScreenImage = $0?.url }
+        )) { image in
+            PhotoViewerScreen(
+                media: [MediaItem(id: 0, kind: .image, imageURL: image.url, videoURL: nil, aspectRatio: 1)],
+                startAt: 0
+            )
+        }
+        .fullScreenCover(item: Binding(
+            get: { commenting.map(OpenNote.init) },
+            set: { commenting = $0?.model }
+        ), onDismiss: {
+            // The note detail clears the shortcut handler when it closes; take it back.
+            shortcuts.handler = handleShortcut
+        }) { open in
+            NoteDetailView(model: open.model, focusComposer: true)
+        }
     }
 
     // MARK: - Paging
@@ -79,11 +104,11 @@ struct SharedContentViewer: View {
                 if let current = self.index, current > 0, items.count > before {
                     go(to: items[current - 1].id, forward: false)
                 } else {
-                    showEdgeHint("已经是第一条了")
+                    showToast("已经是第一条了")
                 }
             }
         } else {
-            showEdgeHint(delta < 0 ? "已经是第一条了" : "已经是最后一条了")
+            showToast(delta < 0 ? "已经是第一条了" : "已经是最后一条了")
         }
     }
 
@@ -96,11 +121,51 @@ struct SharedContentViewer: View {
         }
     }
 
-    private func showEdgeHint(_ text: String) {
-        withAnimation { edgeHint = text }
+    private func showToast(_ text: String) {
+        withAnimation { toast = text }
         Task {
             try? await Task.sleep(for: .seconds(1.5))
-            if edgeHint == text { withAnimation { edgeHint = nil } }
+            if toast == text { withAnimation { toast = nil } }
+        }
+    }
+
+    // MARK: - Shortcuts
+
+    /// The note model for the item on screen, if it's a shared note.
+    private var currentNote: NoteDetailModel? {
+        guard let index, case .card(let card) = items[index].content, let link = card.note else { return nil }
+        return notes[link.id]
+    }
+
+    private func handleShortcut(_ action: ShortcutAction) {
+        guard action != .backToTop else { return }
+        guard let note = currentNote else {
+            showToast("只有分享的笔记可以\(action.title)")
+            return
+        }
+        guard let detail = note.detail else {
+            showToast("笔记还没加载好")
+            return
+        }
+        let client = auth.client
+        switch action {
+        case .like:
+            showToast(detail.liked ? "已取消点赞" : "已点赞")
+            Task { await note.toggleLike(client: client); reportFailure(of: note) }
+        case .collect:
+            showToast(detail.collected ? "已取消收藏" : "已收藏")
+            Task { await note.toggleCollect(client: client); reportFailure(of: note) }
+        case .comment:
+            commenting = note
+        case .backToTop:
+            break
+        }
+    }
+
+    private func reportFailure(of note: NoteDetailModel) {
+        if let error = note.actionError {
+            note.actionError = nil
+            showToast("操作失败：\(error)")
         }
     }
 
@@ -110,17 +175,20 @@ struct SharedContentViewer: View {
     private func page(_ message: ChatMessage) -> some View {
         switch message.content {
         case .image(let url):
-            RemoteImage(url: url, contentMode: .fit)
-                .padding(.horizontal, 80)
-                .padding(.top, 150)
-                .padding(.bottom, 60)
-                .focusable()
-                .focused($pageFocused)
+            Button { fullScreenImage = url } label: {
+                RemoteImage(url: url, contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(BareButtonStyle())
+            .padding(.horizontal, 80)
+            .padding(.top, 150)
+            .padding(.bottom, 60)
+            .focused($pageFocused)
         case .card(let card):
-            if let link = card.note, let detail = details[link.id] {
+            if let link = card.note, let note = notes[link.id], let detail = note.detail {
                 notePage(detail)
             } else {
-                cardPage(card, error: card.note.flatMap { failures[$0.id] })
+                cardPage(card, error: card.note.flatMap { notes[$0.id]?.loadError })
             }
         default:
             EmptyView()
@@ -129,6 +197,7 @@ struct SharedContentViewer: View {
 
     private func notePage(_ detail: NoteDetail) -> some View {
         HStack(spacing: 0) {
+            // Holds the focus: the thumbnails or the 全屏查看 / 播放 button.
             MediaViewer(media: detail.media)
                 .padding(.top, 110)
                 .frame(maxWidth: .infinity)
@@ -151,20 +220,33 @@ struct SharedContentViewer: View {
                     .lineLimit(14)
                 Spacer(minLength: 0)
                 HStack(spacing: 36) {
-                    Label(detail.likes, systemImage: "heart")
-                    Label(detail.collects, systemImage: "star")
+                    Label(detail.likes, systemImage: detail.liked ? "heart.fill" : "heart")
+                        .foregroundStyle(detail.liked ? Color.accentColor : .secondary)
+                    Label(detail.collects, systemImage: detail.collected ? "star.fill" : "star")
+                        .foregroundStyle(detail.collected ? Color.accentColor : .secondary)
                     Label(detail.commentCount, systemImage: "bubble.right")
+                        .foregroundStyle(.secondary)
                 }
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                if let keys = shortcutSummary {
+                    Text(keys)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(50)
             .padding(.top, 110)
             .frame(width: 760, alignment: .leading)
             .frame(maxHeight: .infinity, alignment: .top)
-            .focusable()
-            .focused($pageFocused)
         }
+    }
+
+    /// e.g. "播放/暂停 点赞 · 键盘 C 评论", from the bindings in 设置 → 快捷键.
+    private var shortcutSummary: String? {
+        let parts = [ShortcutAction.like, .collect, .comment].compactMap { action in
+            shortcuts.bindings[action].map { "\($0.name) \(action.title)" }
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     /// A card that isn't a note, or a note that is still loading or failed to load.
@@ -189,18 +271,14 @@ struct SharedContentViewer: View {
     }
 
     private func loadNote() async {
-        guard let index, case .card(let card) = items[index].content, let link = card.note,
-              details[link.id] == nil else { return }
-        failures[link.id] = nil
-        do {
-            details[link.id] = try await auth.client.noteDetail(
-                id: link.id, xsecToken: link.xsecToken, xsecSource: link.xsecSource
-            )
-        } catch is CancellationError {
-        } catch let error as URLError where error.code == .cancelled {
-        } catch {
-            failures[link.id] = error.localizedDescription
-        }
+        guard let index, case .card(let card) = items[index].content, let link = card.note else { return }
+        let note = notes[link.id] ?? NoteDetailModel(
+            note: Note(id: link.id, xsecToken: link.xsecToken, title: card.title,
+                       author: Author(id: "", nickname: "", avatarURL: nil), coverURL: card.imageURL),
+            xsecSource: link.xsecSource
+        )
+        notes[link.id] = note
+        await note.loadDetail(client: auth.client)
     }
 
     // MARK: - Overlays
@@ -230,9 +308,9 @@ struct SharedContentViewer: View {
     }
 
     @ViewBuilder
-    private var edgeHintView: some View {
-        if let edgeHint {
-            Text(edgeHint)
+    private var toastView: some View {
+        if let toast {
+            Text(toast)
                 .font(.callout)
                 .padding(.horizontal, 30)
                 .padding(.vertical, 14)
@@ -241,4 +319,10 @@ struct SharedContentViewer: View {
                 .transition(.opacity)
         }
     }
+}
+
+/// Drives `fullScreenCover(item:)` for a note model.
+private struct OpenNote: Identifiable {
+    let model: NoteDetailModel
+    var id: ObjectIdentifier { ObjectIdentifier(model) }
 }

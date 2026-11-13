@@ -11,6 +11,8 @@ import Observation
 @Observable
 final class NoteDetailModel {
     let note: Note
+    /// Where the note was opened from: "pc_feed" for feed cards, the share link's source for 私信.
+    let xsecSource: String
     private(set) var detail: NoteDetail?
     private(set) var loadError: String?
     /// Shown as an alert when an action fails.
@@ -19,20 +21,29 @@ final class NoteDetailModel {
 
     private var xsecToken: String { note.xsecToken ?? "" }
 
-    init(note: Note) {
+    init(note: Note, xsecSource: String = "pc_feed") {
         self.note = note
+        self.xsecSource = xsecSource
     }
 
+    /// Detail and comments.
     func load(client: XHSClient) async {
-        do {
-            detail = try await client.noteDetail(id: note.id, xsecToken: xsecToken)
-        } catch {
-            loadError = error.localizedDescription
-        }
+        await loadDetail(client: client)
         let id = note.id
         let token = xsecToken
         await comments.reset { cursor, _ in
             try await client.comments(noteID: id, xsecToken: token, cursor: cursor)
+        }
+    }
+
+    /// Just the detail, once; enough for the 私信 viewer.
+    func loadDetail(client: XHSClient) async {
+        guard detail == nil else { return }
+        loadError = nil
+        do {
+            detail = try await client.noteDetail(id: note.id, xsecToken: xsecToken, xsecSource: xsecSource)
+        } catch {
+            loadError = error.localizedDescription
         }
     }
 

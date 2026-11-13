@@ -5,69 +5,143 @@
 
 import SwiftUI
 
-/// App shell modeled on the web client's left navigation: 发现 / 搜索 / 消息 / 我, plus 设置.
-/// Browsing works without logging in, like on the web.
+/// App shell: a tab bar across the top of the screen (发现 / 搜索 / 消息 / 设置, and 我 with
+/// the account's avatar at the right end) over the selected page. Browsing works without
+/// logging in, like on the web.
 struct MainView: View {
-    enum TabID: String { case explore, search, messages, me, settings }
+    enum TabID: String, CaseIterable {
+        case explore, search, messages, settings, me
+
+        var title: String {
+            switch self {
+            case .explore: "发现"
+            case .search: "搜索"
+            case .messages: "消息"
+            case .settings: "设置"
+            case .me: "我"
+            }
+        }
+    }
 
     /// Start tab can be set with a launch argument, e.g. `-selectedTab me`.
     @State private var selection = UserDefaults.standard.string(forKey: "selectedTab")
         .flatMap(TabID.init(rawValue:)) ?? .explore
+    /// Pages are created on first visit and then kept, so each keeps its place.
+    @State private var visited: Set<TabID> = []
 
     @State private var exitGuard = ExitGuard()
 
     var body: some View {
-        tabs
-            .environment(exitGuard)
-            .overlay(alignment: .top) {
-                if exitGuard.showsHint {
-                    ExitHint()
-                        .transition(.move(edge: .top).combined(with: .opacity))
+        VStack(spacing: 0) {
+            TopTabBar(selection: $selection)
+            pages
+        }
+        .environment(exitGuard)
+        .overlay(alignment: .top) {
+            if exitGuard.showsHint {
+                ExitHint()
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: exitGuard.showsHint)
+        .onChange(of: selection, initial: true) { visited.insert(selection) }
+    }
+
+    private var pages: some View {
+        ZStack {
+            ForEach(TabID.allCases, id: \.self) { tab in
+                if visited.contains(tab) {
+                    page(tab)
+                        .opacity(tab == selection ? 1 : 0)
+                        // Hidden pages must not take focus.
+                        .disabled(tab != selection)
+                        .accessibilityHidden(tab != selection)
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: exitGuard.showsHint)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder
-    private var tabs: some View {
-        if #available(tvOS 18.0, *) {
-            TabView(selection: $selection) {
-                Tab("发现", systemImage: "house", value: .explore) {
-                    ExploreView()
-                }
-                Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
-                    SearchView()
-                }
-                Tab("消息", systemImage: "bubble.left.and.bubble.right", value: .messages) {
-                    MessagesView()
-                }
-                Tab("我", systemImage: "person", value: TabID.me) {
-                    ProfileView()
-                }
-                Tab("设置", systemImage: "gearshape", value: TabID.settings) {
-                    SettingsView()
+    private func page(_ tab: TabID) -> some View {
+        switch tab {
+        case .explore: ExploreView()
+        case .search: SearchView()
+        case .messages: MessagesView()
+        case .settings: SettingsView()
+        case .me: ProfileView()
+        }
+    }
+}
+
+/// The row of tabs at the top. Like the system tab bar, landing on a tab switches to it.
+/// The back button here follows the top-level rule: press twice to leave the app.
+struct TopTabBar: View {
+    @Binding var selection: MainView.TabID
+    @Environment(AuthModel.self) private var auth
+    @Environment(ExitGuard.self) private var exitGuard
+    @FocusState private var focused: MainView.TabID?
+
+    var body: some View {
+        HStack(spacing: 20) {
+            ForEach(MainView.TabID.allCases.filter { $0 != .me }, id: \.self) { tab in
+                tabButton(tab) {
+                    Text(tab.title)
                 }
             }
-            .tabViewStyle(.sidebarAdaptable)
+            Spacer()
+            tabButton(.me) {
+                HStack(spacing: 16) {
+                    avatar
+                    Text(MainView.TabID.me.title)
+                }
+            }
+        }
+        .padding(.horizontal, 60)
+        .padding(.top, 30)
+        .padding(.bottom, 10)
+        .focusSection()
+        .onChange(of: focused) { old, tab in
+            guard let tab else { return }
+            // Coming up from a page, the focus engine picks the tab nearest the focused item,
+            // which would switch pages; go back to the current tab instead.
+            if old == nil, tab != selection {
+                focused = selection
+            } else {
+                selection = tab
+            }
+        }
+        .onAppear { focused = selection }
+        .onExitCommand { exitGuard.backPressedAtTop() }
+    }
+
+    private func tabButton(_ tab: MainView.TabID, @ViewBuilder label: () -> some View) -> some View {
+        Button {
+            selection = tab
+        } label: {
+            label()
+                .font(.headline)
+                .fontWeight(tab == selection ? .bold : .regular)
+                .padding(.horizontal, 12)
+        }
+        .buttonStyle(ChipStyle(isSelected: tab == selection))
+        .focused($focused, equals: tab)
+    }
+
+    /// The account's avatar, or a placeholder when logged out.
+    @ViewBuilder
+    private var avatar: some View {
+        if let user = auth.currentUser {
+            AvatarView(
+                author: Author(id: user.userId ?? "", nickname: user.nickname ?? "我",
+                               avatarURL: URL(webImage: user.avatarURL)),
+                size: 44
+            )
         } else {
-            // tvOS 17: classic top tab bar.
-            TabView(selection: $selection) {
-                ExploreView()
-                    .tabItem { Label("发现", systemImage: "house") }
-                    .tag(TabID.explore)
-                SearchView()
-                    .tabItem { Label("搜索", systemImage: "magnifyingglass") }
-                    .tag(TabID.search)
-                MessagesView()
-                    .tabItem { Label("消息", systemImage: "bubble.left.and.bubble.right") }
-                    .tag(TabID.messages)
-                ProfileView()
-                    .tabItem { Label("我", systemImage: "person") }
-                    .tag(TabID.me)
-                SettingsView()
-                    .tabItem { Label("设置", systemImage: "gearshape") }
-                    .tag(TabID.settings)
-            }
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .frame(width: 44, height: 44)
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -100,7 +174,7 @@ struct LoginRequiredView: View {
             description: Text("请在“我”页面扫码登录")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Focusable so the remote can move up from this page into the tab menu.
+        // Focusable so the remote can move up from this page into the tab bar.
         .focusable()
     }
 }

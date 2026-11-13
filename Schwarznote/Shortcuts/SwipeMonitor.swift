@@ -2,19 +2,21 @@
 //  SwipeMonitor.swift
 //  Schwarznote
 //
-//  Reports up/down swipes on the remote's touch surface. SwiftUI's move commands only cover
-//  clicks on the edges, so swipe recognizers go on the window, alongside the focus engine,
-//  for as long as the view that owns this monitor is on screen.
+//  Reports swipes on the remote's touch surface. SwiftUI's move commands only cover clicks on
+//  the edges, so swipe recognizers go on the window, alongside the focus engine, for as long as
+//  the view that owns this monitor is on screen. Swipes are ignored while another screen is
+//  presented on top of the owner, so stacked full-screen pages don't all react at once.
 //
 
 import SwiftUI
 import UIKit
 
 struct SwipeMonitor: UIViewRepresentable {
+    var directions: [UISwipeGestureRecognizer.Direction] = [.up, .down]
     let onSwipe: (UISwipeGestureRecognizer.Direction) -> Void
 
     func makeUIView(context: Context) -> InstallerView {
-        InstallerView()
+        InstallerView(directions: directions)
     }
 
     func updateUIView(_ view: InstallerView, context: Context) {
@@ -29,10 +31,10 @@ struct SwipeMonitor: UIViewRepresentable {
         var onSwipe: ((UISwipeGestureRecognizer.Direction) -> Void)?
         private var recognizers: [UISwipeGestureRecognizer] = []
 
-        override init(frame: CGRect) {
-            super.init(frame: frame)
+        init(directions: [UISwipeGestureRecognizer.Direction]) {
+            super.init(frame: .zero)
             isUserInteractionEnabled = false
-            recognizers = [UISwipeGestureRecognizer.Direction.up, .down].map { direction in
+            recognizers = directions.map { direction in
                 let recognizer = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
                 recognizer.direction = direction
                 recognizer.cancelsTouchesInView = false
@@ -58,7 +60,20 @@ struct SwipeMonitor: UIViewRepresentable {
         }
 
         @objc private func swiped(_ recognizer: UISwipeGestureRecognizer) {
+            guard isFrontmost else { return }
             onSwipe?(recognizer.direction)
+        }
+
+        /// False while the screen holding this view has presented another one over itself.
+        private var isFrontmost: Bool {
+            var responder: UIResponder? = self
+            while let current = responder, !(current is UIViewController) { responder = current.next }
+            var controller = responder as? UIViewController
+            while let current = controller {
+                if current.presentedViewController != nil { return false }
+                controller = current.parent
+            }
+            return true
         }
 
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,

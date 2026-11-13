@@ -40,6 +40,18 @@ nonisolated struct Note: Identifiable, Hashable, Sendable, Decodable {
 
     private struct NotANote: Error {}
 
+    init(id: String, xsecToken: String?, title: String, author: Author, coverURL: URL?,
+         coverAspectRatio: CGFloat = 3.0 / 4.0, likes: String = "0", isVideo: Bool = false) {
+        self.id = id
+        self.xsecToken = xsecToken
+        self.title = title
+        self.author = author
+        self.coverURL = coverURL
+        self.coverAspectRatio = coverAspectRatio
+        self.likes = likes
+        self.isVideo = isVideo
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
         guard let id = c.string("id"), c.string("model_type") ?? "note" == "note",

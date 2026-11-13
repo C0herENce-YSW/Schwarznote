@@ -19,7 +19,7 @@ struct ExploreView: View {
         ScrollViewReader { scroll in
             ScrollView {
                 VStack(alignment: .leading, spacing: 40) {
-                    ChipBar(items: Channel.allCases, title: \.rawValue, selection: $channel, focus: $focusedChannel)
+                    ChipBar(items: Channel.allCases, title: \.rawValue, selection: $channel, focus: $focusedChannel, wraps: true)
                         .id(ScrollTop.id)
 
                     if feed.items.isEmpty, let error = feed.error {
@@ -98,10 +98,21 @@ struct ChipBar<Item: Hashable>: View {
     @Binding var selection: Item
     /// Which chip has focus; the page uses it to tell whether focus is in its top row.
     var focus: FocusState<Item?>.Binding
+    /// Moving right from the last chip goes to the first, and left from the first to the last.
+    var wraps = false
+
+    /// Invisible stops just past each end. The focus engine moves onto them like onto any
+    /// chip (so swipes work, not just clicks), and they hand focus straight to the other end.
+    @FocusState private var edgeStop: HorizontalEdge?
+    /// The chip focus last left, and when, to tell a move off the end from arriving from below.
+    @State private var lastLeft: (item: Item, time: Date)?
+    /// Set while an edge stop hands focus to the other end, so that move isn't redirected.
+    @State private var wrapping = false
 
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 20) {
+                if wraps { stop(.leading) }
                 ForEach(items, id: \.self) { item in
                     Button {
                         selection = item
@@ -114,10 +125,43 @@ struct ChipBar<Item: Hashable>: View {
                     .buttonStyle(ChipStyle(isSelected: item == selection))
                     .focused(focus, equals: item)
                 }
+                if wraps { stop(.trailing) }
             }
             .padding(.vertical, 20)
         }
         .scrollClipDisabled()
+        .onChange(of: focus.wrappedValue) { old, new in
+            if let old, new == nil { lastLeft = (old, Date()) }
+            // Arriving from outside the row (the tab bar above or the feed below), the focus
+            // engine picks whichever chip sits nearest; land on the selected one instead.
+            if old == nil, let new, !wrapping, new != selection {
+                focus.wrappedValue = selection
+            }
+            wrapping = false
+        }
+        .onChange(of: edgeStop) { _, edge in
+            if let edge { wrap(from: edge) }
+        }
+    }
+
+    private func stop(_ edge: HorizontalEdge) -> some View {
+        Color.white.opacity(0.001)
+            .frame(width: 2, height: 60)
+            .focusable()
+            .focused($edgeStop, equals: edge)
+    }
+
+    private func wrap(from edge: HorizontalEdge) {
+        guard let first = items.first, let last = items.last else { return }
+        // Only a move straight off the end wraps; arriving on a stop from above or below
+        // lands on the selected chip, like arriving anywhere else in the row.
+        let cameFrom = lastLeft.flatMap { Date().timeIntervalSince($0.time) < 0.5 ? $0.item : nil }
+        let target: Item? = switch edge {
+        case .leading: cameFrom == first ? last : nil
+        case .trailing: cameFrom == last ? first : nil
+        }
+        wrapping = target != nil
+        focus.wrappedValue = target ?? selection
     }
 }
 

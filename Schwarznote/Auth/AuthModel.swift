@@ -22,6 +22,11 @@ final class AuthModel {
         if case .loggedIn = state { true } else { false }
     }
 
+    /// The signed-in account, when its profile has loaded.
+    var currentUser: XHSUser? {
+        if case .loggedIn(let user) = state { user } else { nil }
+    }
+
     /// Changes whenever content should be reloaded: new client (region or signer) or login state.
     /// `nil` while the saved session is still being restored.
     var contentKey: String? {
