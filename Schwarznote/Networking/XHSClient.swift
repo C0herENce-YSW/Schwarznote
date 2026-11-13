@@ -15,6 +15,8 @@ enum XHSError: LocalizedError, Equatable {
     case notLoggedIn
     /// Code 300012: the server's risk control rejected the client's network.
     case networkRejected
+    /// HTTP 461: the server wants a human verification step the app can't do.
+    case verificationRequired
 
     var errorDescription: String? {
         switch self {
@@ -30,6 +32,8 @@ enum XHSError: LocalizedError, Equatable {
             "登录已失效，请重新扫码"
         case .networkRejected:
             "小红书拒绝了当前网络（错误 300012）。国内站只接受来自中国大陆网络的登录；身在海外时请切换到“rednote（海外）”。"
+        case .verificationRequired:
+            "小红书要求先完成安全验证（HTTP 461），应用无法代为完成。请稍后再试。"
         }
     }
 }
@@ -95,6 +99,33 @@ final class XHSClient {
         try await get("/api/sns/web/v2/user/me")
     }
 
+    // MARK: - Content
+
+    /// One page of the explore feed. `noteIndex` is how many notes are already shown.
+    func homefeed(category: String, cursor: String, noteIndex: Int) async throws -> Pager<Note>.Page {
+        let payload: HomefeedPayload = try await post("/api/sns/web/v1/homefeed", body: [
+            "category": category,
+            "cursor_score": cursor,
+            "image_formats": ["jpg", "webp", "avif"],
+            "need_filter_image": false,
+            "need_num": 20,
+            "note_index": noteIndex,
+            "num": 30,
+            "refresh_type": cursor.isEmpty ? 1 : 3,
+            "search_key": "",
+            "unread_begin_note_id": "",
+            "unread_end_note_id": "",
+            "unread_note_count": 0,
+        ])
+        return .init(items: payload.notes, cursor: payload.cursor, hasMore: true)
+    }
+
+    func notifications(_ kind: NotificationKind, cursor: String) async throws -> Pager<NotificationMessage>.Page {
+        let cursor = cursor.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        let page: NotificationPage = try await get("/api/sns/web/v1/you/\(kind.rawValue)?num=20&cursor=\(cursor)")
+        return .init(items: page.messages, cursor: page.cursor, hasMore: page.hasMore)
+    }
+
     // MARK: - Requests
 
     private func get<T: Decodable & Sendable>(_ path: String) async throws -> T {
@@ -155,6 +186,7 @@ final class XHSClient {
         switch status {
         case 200..<300: break
         case 406: throw XHSError.signatureRequired
+        case 461: throw XHSError.verificationRequired
         case 401: throw XHSError.notLoggedIn
         default: throw XHSError.http(status)
         }

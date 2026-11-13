@@ -54,6 +54,18 @@ enum QRCodeStatus: Equatable, Sendable {
     }
 }
 
+/// `POST /api/sns/web/v1/homefeed` → data
+nonisolated struct HomefeedPayload: Decodable, Sendable {
+    let cursor: String
+    let notes: [Note]
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        cursor = c.string("cursor_score") ?? ""
+        notes = c.value(LossyArray<Note>.self, "items")?.elements ?? []
+    }
+}
+
 /// `GET /api/sns/web/v2/user/me` → data (only the fields we use).
 nonisolated struct XHSUser: Decodable, Sendable, Equatable {
     let userId: String?

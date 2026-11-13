@@ -27,27 +27,19 @@ struct NoteDetailView: View {
                         .disabled(true)
                 }
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        Text(note.title)
-                            .font(.title2.bold())
-                        Text(note.body)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                    }
+                Text(note.title)
+                    .font(.title2.bold())
                     .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .focusable()
+                    // Something must hold focus so the Menu button reaches onExitCommand.
+                    .focusable()
+
+                Spacer()
 
                 Divider()
 
-                HStack(spacing: 48) {
-                    Label(note.likeCount.compactCount, systemImage: "heart")
-                    Label((note.likeCount / 3).compactCount, systemImage: "star")
-                    Label((note.likeCount / 20).compactCount, systemImage: "bubble.right")
-                }
-                .font(.headline)
-                .foregroundStyle(.secondary)
+                Label(note.likes, systemImage: "heart")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
             }
             .padding(60)
             .frame(width: 760)

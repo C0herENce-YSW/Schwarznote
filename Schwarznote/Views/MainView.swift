@@ -24,7 +24,7 @@ struct MainView: View {
                     SearchView()
                 }
                 Tab("通知", systemImage: "bell", value: .notifications) {
-                    LoginRequiredView(feature: "通知")
+                    NotificationsView()
                 }
                 Tab("我", systemImage: "person", value: TabID.me) {
                     ProfileView()
@@ -40,7 +40,7 @@ struct MainView: View {
                 SearchView()
                     .tabItem { Label("搜索", systemImage: "magnifyingglass") }
                     .tag(TabID.search)
-                LoginRequiredView(feature: "通知")
+                NotificationsView()
                     .tabItem { Label("通知", systemImage: "bell") }
                     .tag(TabID.notifications)
                 ProfileView()

@@ -39,7 +39,7 @@ struct NoteCard: View {
                     Image(systemName: "heart")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(note.likeCount.compactCount)
+                    Text(note.likes)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -55,7 +55,7 @@ struct NoteCard: View {
     }
 }
 
-/// Cover image, or a tinted placeholder while there is no real image.
+/// Cover image, with a tinted placeholder while it loads.
 struct NoteCover: View {
     let note: Note
 
@@ -72,11 +72,16 @@ struct NoteCover: View {
         }
     }
 
+    /// Stable tint per note while the cover loads.
+    private var hue: Double {
+        Double(note.id.unicodeScalars.reduce(0) { $0 &+ Int($1.value) } % 360) / 360
+    }
+
     private var placeholder: some View {
         LinearGradient(
             colors: [
-                Color(hue: note.placeholderHue, saturation: 0.35, brightness: 0.85),
-                Color(hue: note.placeholderHue, saturation: 0.55, brightness: 0.6),
+                Color(hue: hue, saturation: 0.35, brightness: 0.85),
+                Color(hue: hue, saturation: 0.55, brightness: 0.6),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

@@ -1,14 +1,18 @@
 """
 Schwarznote signing service.
 
-Runs a real Chromium browser with the Xiaohongshu / rednote web page open and asks the
-page's own code (`window._webmsxyw`) for the X-s / X-t headers. Nothing is reimplemented
-or de-obfuscated: the signature comes from the site's script running in a real browser.
+Runs a real Chromium browser with the Xiaohongshu / rednote web page open. For each
+request the app wants to make, the page's own HTTP client builds the request, so the
+site's interceptors add every header they normally add (X-s, X-t, X-S-Common, trace ids).
+`capture_headers.js` records those headers and aborts the request before it is sent.
+Nothing is reimplemented or de-obfuscated.
 
 The Apple TV app calls:
 
     POST /sign   {"region": "china"|"international", "path": "/api/...", "body": {...} | null}
-    -> {"headers": {"X-s": "...", "X-t": "..."}, "cookies": {"a1": "...", ...}, "userAgent": "..."}
+    -> {"headers": {"X-s": "...", ...}, "cookies": {"a1": "...", ...}, "userAgent": "..."}
+
+`body: null` means a GET request; `path` then includes the query string.
 
 The signature is bound to the browser's device cookies (a1, webId, ...), so the app must
 send those same cookies and the same User-Agent; the response includes both.
@@ -22,6 +26,7 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 
 from aiohttp import web
 from playwright.async_api import Browser, Page, async_playwright
@@ -32,6 +37,10 @@ ORIGINS = {
 }
 # Device cookies the signature depends on. Session cookies (web_session) stay on the TV.
 DEVICE_COOKIES = {"a1", "webId", "gid", "websectiga", "sec_poison_id", "xsecappid"}
+
+CAPTURE_JS = (Path(__file__).parent / "capture_headers.js").read_text()
+# The app sets these itself.
+SKIPPED_HEADERS = {"accept", "content-type"}
 
 HOST = os.environ.get("SIGNER_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SIGNER_PORT", "8790"))
@@ -62,19 +71,16 @@ class Signer:
     async def sign(self, region: str, path: str, body):
         async with self.locks[region]:
             page = await self.page_for(region)
+            request = {"method": "GET" if body is None else "POST", "path": path, "body": body}
             try:
-                result = await page.evaluate(
-                    "async ([p, b]) => await window._webmsxyw(p, b)", [path, body]
-                )
+                result = await page.evaluate(CAPTURE_JS, request)
             except Exception:
                 # Page navigated or crashed: reload once and retry.
                 log.exception("signing failed, reloading page")
                 self.pages.pop(region, None)
                 await page.context.close()
                 page = await self.page_for(region)
-                result = await page.evaluate(
-                    "async ([p, b]) => await window._webmsxyw(p, b)", [path, body]
-                )
+                result = await page.evaluate(CAPTURE_JS, request)
 
             cookies = {
                 c["name"]: c["value"]
@@ -84,7 +90,9 @@ class Signer:
             user_agent = await page.evaluate("navigator.userAgent")
 
         return {
-            "headers": {"X-s": result["X-s"], "X-t": str(result["X-t"])},
+            "headers": {
+                k: v for k, v in result["headers"].items() if k.lower() not in SKIPPED_HEADERS
+            },
             "cookies": cookies,
             "userAgent": user_agent,
         }

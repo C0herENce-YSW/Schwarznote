@@ -18,6 +18,16 @@ final class AuthModel {
     private(set) var state: State = .restoring
     private(set) var client: XHSClient
 
+    var isLoggedIn: Bool {
+        if case .loggedIn = state { true } else { false }
+    }
+
+    /// Changes whenever content should be reloaded: new client (region or signer) or login state.
+    /// `nil` while the saved session is still being restored.
+    var contentKey: String? {
+        state == .restoring ? nil : "\(ObjectIdentifier(client).hashValue)-\(isLoggedIn)"
+    }
+
     var region: XHSRegion {
         didSet {
             guard region != oldValue else { return }
