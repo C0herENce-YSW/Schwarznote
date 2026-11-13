@@ -14,7 +14,22 @@ struct MainView: View {
     @State private var selection = UserDefaults.standard.string(forKey: "selectedTab")
         .flatMap(TabID.init(rawValue:)) ?? .explore
 
+    @State private var exitGuard = ExitGuard()
+
     var body: some View {
+        tabs
+            .environment(exitGuard)
+            .overlay(alignment: .top) {
+                if exitGuard.showsHint {
+                    ExitHint()
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: exitGuard.showsHint)
+    }
+
+    @ViewBuilder
+    private var tabs: some View {
         if #available(tvOS 18.0, *) {
             TabView(selection: $selection) {
                 Tab("发现", systemImage: "house", value: .explore) {
@@ -63,6 +78,8 @@ struct SearchView: View {
             )
             .searchable(text: $query, prompt: "搜索小红书")
         }
+        // Nothing to scroll here yet, so the page is always at the top.
+        .backButtonReturnsToTop(isAtTop: true) {}
     }
 }
 

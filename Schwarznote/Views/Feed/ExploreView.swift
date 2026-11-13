@@ -11,38 +11,45 @@ struct ExploreView: View {
     @State private var feed = Pager<Note>()
     @State private var channel = Channel.recommend
     @State private var selectedNote: Note?
+    @FocusState private var focusedChannel: Channel?
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 40), count: 5)
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 40) {
-                ChipBar(items: Channel.allCases, title: \.rawValue, selection: $channel)
+        ScrollViewReader { scroll in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 40) {
+                    ChipBar(items: Channel.allCases, title: \.rawValue, selection: $channel, focus: $focusedChannel)
+                        .id(ScrollTop.id)
 
-                if feed.items.isEmpty, let error = feed.error {
-                    ErrorView(message: error) { await feed.retry() }
-                }
-
-                WaterfallGrid(
-                    items: feed.items,
-                    columns: 5,
-                    spacing: 40,
-                    relativeHeight: NoteCard.relativeHeight(of:)
-                ) { note in
-                    Button {
-                        selectedNote = note
-                    } label: {
-                        NoteCard(note: note)
+                    if feed.items.isEmpty, let error = feed.error {
+                        ErrorView(message: error) { await feed.retry() }
                     }
-                    .buttonStyle(.card)
-                    .task { await feed.loadMoreIfNeeded(current: note) }
-                }
 
-                if feed.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
+                    LazyVGrid(columns: columns, spacing: 50) {
+                        ForEach(feed.items) { note in
+                            Button {
+                                selectedNote = note
+                            } label: {
+                                NoteCard(note: note)
+                            }
+                            .buttonStyle(.card)
+                            .task { await feed.loadMoreIfNeeded(current: note) }
+                        }
+                    }
+
+                    if feed.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .padding(.horizontal, 60)
+                .padding(.vertical, 40)
             }
-            .padding(.horizontal, 60)
-            .padding(.vertical, 40)
+            .backButtonReturnsToTop(isAtTop: focusedChannel != nil) {
+                withAnimation { scroll.scrollTo(ScrollTop.id, anchor: .top) }
+                focusedChannel = channel
+            }
         }
         .task(id: "\(auth.contentKey ?? "")-\(channel.category)") {
             guard auth.contentKey != nil else { return }
@@ -61,6 +68,11 @@ struct ExploreView: View {
             NoteDetailView(note: note)
         }
     }
+}
+
+/// Scroll anchor for the top of a page.
+enum ScrollTop {
+    static let id = "top"
 }
 
 /// Error message with a focusable retry button.
@@ -84,6 +96,8 @@ struct ChipBar<Item: Hashable>: View {
     let items: [Item]
     let title: (Item) -> String
     @Binding var selection: Item
+    /// Which chip has focus; the page uses it to tell whether focus is in its top row.
+    var focus: FocusState<Item?>.Binding
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -98,6 +112,7 @@ struct ChipBar<Item: Hashable>: View {
                             .padding(.horizontal, 12)
                     }
                     .buttonStyle(ChipStyle(isSelected: item == selection))
+                    .focused(focus, equals: item)
                 }
             }
             .padding(.vertical, 20)

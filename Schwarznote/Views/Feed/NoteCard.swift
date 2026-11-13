@@ -5,14 +5,17 @@
 
 import SwiftUI
 
-/// One note in the waterfall: cover, title, author and like count.
+/// One note in the grid: cover, title, author and like count. Every card has the same
+/// shape (3:4 cover, two title lines) so rows line up.
 struct NoteCard: View {
     let note: Note
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NoteCover(note: note)
-                .aspectRatio(max(note.coverAspectRatio, 0.6), contentMode: .fit)
+            Color.clear
+                .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                .overlay { NoteCover(note: note) }
+                .clipped()
                 .overlay(alignment: .topTrailing) {
                     if note.isVideo {
                         Image(systemName: "play.circle.fill")
@@ -25,7 +28,7 @@ struct NoteCard: View {
             VStack(alignment: .leading, spacing: 14) {
                 Text(note.title)
                     .font(.callout.weight(.medium))
-                    .lineLimit(2)
+                    .lineLimit(2, reservesSpace: true)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -47,11 +50,6 @@ struct NoteCard: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
         }
-    }
-
-    /// Height relative to width, for the waterfall's column balancing.
-    static func relativeHeight(of note: Note) -> CGFloat {
-        1 / max(note.coverAspectRatio, 0.6) + 0.45
     }
 }
 

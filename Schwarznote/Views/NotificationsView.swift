@@ -10,44 +10,53 @@ struct NotificationsView: View {
     @Environment(AuthModel.self) private var auth
     @State private var kind = NotificationKind.mentions
     @State private var pager = Pager<NotificationMessage>()
+    @FocusState private var focusedKind: NotificationKind?
 
     var body: some View {
         if auth.isLoggedIn {
             list
         } else {
             LoginRequiredView(feature: "通知")
+                .backButtonReturnsToTop(isAtTop: true) {}
         }
     }
 
     private var list: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 24) {
-                ChipBar(items: NotificationKind.allCases, title: \.title, selection: $kind)
+        ScrollViewReader { scroll in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    ChipBar(items: NotificationKind.allCases, title: \.title, selection: $kind, focus: $focusedKind)
+                        .id(ScrollTop.id)
 
-                if pager.items.isEmpty, let error = pager.error {
-                    ErrorView(message: error) { await pager.retry() }
-                } else if pager.items.isEmpty, !pager.isLoading {
-                    ContentUnavailableView("暂时没有\(kind.title)", systemImage: "bell.slash")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 80)
-                        .focusable()
-                }
-
-                ForEach(pager.items) { message in
-                    Button {} label: {
-                        NotificationRow(message: message)
+                    if pager.items.isEmpty, let error = pager.error {
+                        ErrorView(message: error) { await pager.retry() }
+                    } else if pager.items.isEmpty, !pager.isLoading {
+                        ContentUnavailableView("暂时没有\(kind.title)", systemImage: "bell.slash")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 80)
+                            .focusable()
                     }
-                    .buttonStyle(.card)
-                    .task { await pager.loadMoreIfNeeded(current: message) }
-                }
 
-                if pager.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
+                    ForEach(pager.items) { message in
+                        Button {} label: {
+                            NotificationRow(message: message)
+                        }
+                        .buttonStyle(.card)
+                        .task { await pager.loadMoreIfNeeded(current: message) }
+                    }
+
+                    if pager.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    }
                 }
+                .padding(.horizontal, 60)
+                .padding(.vertical, 40)
             }
-            .padding(.horizontal, 60)
-            .padding(.vertical, 40)
+            .backButtonReturnsToTop(isAtTop: focusedKind != nil) {
+                withAnimation { scroll.scrollTo(ScrollTop.id, anchor: .top) }
+                focusedKind = kind
+            }
         }
         .task(id: "\(auth.contentKey ?? "")-\(kind.rawValue)") {
             guard auth.contentKey != nil else { return }
