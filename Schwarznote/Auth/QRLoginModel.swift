@@ -47,7 +47,18 @@ final class QRLoginModel {
                 }
                 phase = .showing(ticket, status)
 
-                // The session cookie is the real signal; codeStatus values beyond 0 are unconfirmed.
+                // Observed: 0 = waiting, 1 = scanned, 2 = confirmed on the phone.
+                if status == .confirmed {
+                    do {
+                        try await auth.client.completeQRLogin(for: ticket)
+                    } catch {
+                        phase = .failed("手机已确认，但服务器拒绝登录：\(error.localizedDescription)")
+                        return
+                    }
+                    if await auth.completeLogin() { return }
+                    phase = .failed("手机已确认，但服务器没有下发登录凭证")
+                    return
+                }
                 if await auth.completeLogin() { return }
                 if status == .expired { break }
             }

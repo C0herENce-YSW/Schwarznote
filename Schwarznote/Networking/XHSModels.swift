@@ -34,8 +34,8 @@ nonisolated struct QRCodeStatusPayload: Decodable, Sendable {
 
 /// Scan state shown on screen.
 ///
-/// Only `0` (not scanned yet) has been observed so far; the meaning of the other
-/// values is an assumption until a real scan is captured.
+/// Observed: 0 = waiting, 1 = scanned, 2 = confirmed on the phone,
+/// 3 = code no longer valid ("二维码为空"); the app then creates a new code.
 enum QRCodeStatus: Equatable, Sendable {
     case waitingForScan
     case scanned

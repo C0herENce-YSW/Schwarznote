@@ -8,18 +8,24 @@ import SwiftUI
 /// App shell modeled on the web client's left navigation: 发现 / 搜索 / 通知 / 我.
 /// Browsing works without logging in, like on the web.
 struct MainView: View {
+    enum TabID: String { case explore, search, notifications, me }
+
+    /// Start tab can be set with a launch argument, e.g. `-selectedTab me`.
+    @State private var selection = UserDefaults.standard.string(forKey: "selectedTab")
+        .flatMap(TabID.init(rawValue:)) ?? .explore
+
     var body: some View {
-        TabView {
-            Tab("发现", systemImage: "house") {
+        TabView(selection: $selection) {
+            Tab("发现", systemImage: "house", value: .explore) {
                 ExploreView()
             }
-            Tab("搜索", systemImage: "magnifyingglass", role: .search) {
+            Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
                 SearchView()
             }
-            Tab("通知", systemImage: "bell") {
+            Tab("通知", systemImage: "bell", value: .notifications) {
                 LoginRequiredView(feature: "通知")
             }
-            Tab("我", systemImage: "person") {
+            Tab("我", systemImage: "person", value: TabID.me) {
                 ProfileView()
             }
         }

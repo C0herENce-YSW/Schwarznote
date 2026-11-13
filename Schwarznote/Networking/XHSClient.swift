@@ -13,6 +13,8 @@ enum XHSError: LocalizedError, Equatable {
     case api(code: Int, message: String?)
     case emptyData
     case notLoggedIn
+    /// Code 300012: the server's risk control rejected the client's network.
+    case networkRejected
 
     var errorDescription: String? {
         switch self {
@@ -26,8 +28,15 @@ enum XHSError: LocalizedError, Equatable {
             "接口没有返回数据"
         case .notLoggedIn:
             "登录已失效，请重新扫码"
+        case .networkRejected:
+            "小红书拒绝了当前网络（错误 300012）。国内站只接受来自中国大陆网络的登录；身在海外时请切换到“rednote（海外）”。"
         }
     }
+}
+
+/// Decodes any JSON value and discards it.
+nonisolated struct IgnoredPayload: Decodable, Sendable {
+    init(from decoder: Decoder) throws {}
 }
 
 /// Thin client for the Xiaohongshu / rednote web API.
@@ -71,6 +80,17 @@ final class XHSClient {
         return QRCodeStatus(rawValue: payload.codeStatus ?? 0)
     }
 
+    /// After the phone confirms (codeStatus 2), this call is expected to issue the
+    /// `web_session` cookie. Observed so far: the server can refuse with "登录异常".
+    func completeQRLogin(for ticket: QRCodeTicket) async throws {
+        let path = "/api/sns/web/v1/login/qrcode/status?qr_id=\(ticket.qrId)&code=\(ticket.code)"
+        do {
+            let _: IgnoredPayload = try await get(path)
+        } catch XHSError.emptyData {
+            // Success without a body is fine; the cookie is what matters.
+        }
+    }
+
     func currentUser() async throws -> XHSUser {
         try await get("/api/sns/web/v2/user/me")
     }
@@ -103,6 +123,18 @@ final class XHSClient {
         return request
     }
 
+    #if DEBUG
+    /// Login and account responses carry session tokens; log only their code and message.
+    private static func loggableBody(_ data: Data, path: String) -> String {
+        let sensitive = ["/login/qrcode/status", "/login/activate", "/user/me"]
+        guard sensitive.contains(where: path.contains) else {
+            return String(decoding: data.prefix(500), as: UTF8.self)
+        }
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return "[redacted] code=\(json?["code"] ?? "?") msg=\(json?["msg"] ?? "?")"
+    }
+    #endif
+
     private func send<T: Decodable & Sendable>(_ request: URLRequest, path: String, body: Data?) async throws -> T {
         var request = request
         let headers = try await signer.signatureHeaders(region: region, path: path, body: body)
@@ -115,9 +147,9 @@ final class XHSClient {
         #if DEBUG
         let setCookies = ((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Set-Cookie") ?? "")
             .split(separator: ",").compactMap { $0.split(separator: "=").first?.trimmingCharacters(in: .whitespaces) }
-        Self.log.debug("""
+        Self.log.notice("""
             \(path, privacy: .public) → \(status) set-cookie=\(setCookies.joined(separator: ","), privacy: .public) \
-            body=\(String(decoding: data.prefix(500), as: UTF8.self), privacy: .public)
+            body=\(Self.loggableBody(data, path: path), privacy: .public)
             """)
         #endif
         switch status {
@@ -129,6 +161,7 @@ final class XHSClient {
 
         let envelope = try JSONDecoder().decode(XHSResponse<T>.self, from: data)
         guard envelope.success else {
+            if envelope.code == 300012 { throw XHSError.networkRejected }
             throw XHSError.api(code: envelope.code, message: envelope.msg)
         }
         guard let payload = envelope.data else { throw XHSError.emptyData }
