@@ -43,6 +43,16 @@ final class Pager<Item: Identifiable & Sendable> {
         if let fetch { await reset(fetch) }
     }
 
+    /// Edits one loaded item in place, e.g. after liking it.
+    func update(_ id: Item.ID, _ change: (inout Item) -> Void) {
+        if let index = items.firstIndex(where: { $0.id == id }) { change(&items[index]) }
+    }
+
+    /// Adds an item created locally, e.g. a comment just posted.
+    func prepend(_ item: Item) {
+        items.insert(item, at: 0)
+    }
+
     /// Call when an item near the end appears.
     func loadMoreIfNeeded(current item: Item) async {
         guard let index = items.firstIndex(where: { $0.id == item.id }), index >= items.count - 8 else { return }

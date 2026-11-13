@@ -51,6 +51,11 @@ struct ExploreView: View {
             await feed.reset { cursor, count in
                 try await client.homefeed(category: category, cursor: cursor, noteIndex: count)
             }
+            #if DEBUG
+            // Launch argument for testing without a remote, e.g. `-openNote 3`.
+            let index = UserDefaults.standard.integer(forKey: "openNote")
+            if index > 0, index <= feed.items.count { selectedNote = feed.items[index - 1] }
+            #endif
         }
         .fullScreenCover(item: $selectedNote) { note in
             NoteDetailView(note: note)

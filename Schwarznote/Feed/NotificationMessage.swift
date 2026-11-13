@@ -51,8 +51,7 @@ nonisolated struct NotificationMessage: Identifiable, Sendable, Decodable {
         let comment = c.nested("comment_info")
         id = c.string("id") ?? UUID().uuidString
         title = c.string("title") ?? ""
-        // Seconds in some lists, milliseconds in others.
-        time = c.double("time").map { Date(timeIntervalSince1970: $0 > 1e12 ? $0 / 1000 : $0) }
+        time = c.date("time")
         user = c.value(Author.self, "user_info", "user")
         content = comment?.string("content") ?? item?.string("content")
         imageURL = URL(webImage: item?.string("image"))

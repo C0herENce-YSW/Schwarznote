@@ -121,9 +121,86 @@ final class XHSClient {
     }
 
     func notifications(_ kind: NotificationKind, cursor: String) async throws -> Pager<NotificationMessage>.Page {
-        let cursor = cursor.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
-        let page: NotificationPage = try await get("/api/sns/web/v1/you/\(kind.rawValue)?num=20&cursor=\(cursor)")
+        let page: NotificationPage = try await get(
+            "/api/sns/web/v1/you/\(kind.rawValue)" + Self.query(["num": "20", "cursor": cursor])
+        )
         return .init(items: page.messages, cursor: page.cursor, hasMore: page.hasMore)
+    }
+
+    // MARK: - Note detail
+
+    /// Full note: text, every image / live photo or the video, and interaction counts.
+    /// `xsecToken` comes from the feed card the note was opened from.
+    func noteDetail(id: String, xsecToken: String) async throws -> NoteDetail {
+        let payload: NoteDetailPayload = try await post("/api/sns/web/v1/feed", body: [
+            "extra": ["need_body_topic": "1"],
+            "image_formats": ["jpg", "webp", "avif"],
+            "source_note_id": id,
+            "xsec_source": "pc_feed",
+            "xsec_token": xsecToken,
+        ])
+        return payload.note
+    }
+
+    func comments(noteID: String, xsecToken: String, cursor: String) async throws -> Pager<Comment>.Page {
+        let page: CommentPage = try await get("/api/sns/web/v2/comment/page" + Self.query([
+            "note_id": noteID, "cursor": cursor, "top_comment_id": "",
+            "image_formats": "jpg,webp,avif", "xsec_token": xsecToken,
+        ]))
+        return .init(items: page.comments, cursor: page.cursor, hasMore: page.hasMore)
+    }
+
+    /// More replies under one top-level comment.
+    func replies(noteID: String, rootID: String, xsecToken: String, cursor: String) async throws -> CommentPage {
+        try await get("/api/sns/web/v2/comment/sub/page" + Self.query([
+            "note_id": noteID, "root_comment_id": rootID, "num": "10", "cursor": cursor,
+            "image_formats": "jpg,webp,avif", "top_comment_id": "", "xsec_token": xsecToken,
+        ]))
+    }
+
+    // MARK: - Actions
+
+    func setLiked(_ liked: Bool, noteID: String) async throws {
+        try await action(liked ? "/api/sns/web/v1/note/like" : "/api/sns/web/v1/note/dislike",
+                         body: ["note_oid": noteID])
+    }
+
+    func setCollected(_ collected: Bool, noteID: String) async throws {
+        if collected {
+            try await action("/api/sns/web/v1/note/collect", body: ["note_id": noteID])
+        } else {
+            try await action("/api/sns/web/v1/note/uncollect", body: ["note_ids": noteID])
+        }
+    }
+
+    func setCommentLiked(_ liked: Bool, noteID: String, commentID: String) async throws {
+        try await action(liked ? "/api/sns/web/v1/comment/like" : "/api/sns/web/v1/comment/dislike",
+                         body: ["note_id": noteID, "comment_id": commentID])
+    }
+
+    /// Posts a comment on the note, or a reply when `replyTo` is a comment ID.
+    func postComment(noteID: String, content: String, replyTo: String?) async throws -> Comment {
+        var body: [String: Any] = ["note_id": noteID, "content": content, "at_users": [Any]()]
+        if let replyTo { body["target_comment_id"] = replyTo }
+        let payload: CommentPostPayload = try await post("/api/sns/web/v1/comment/post", body: body)
+        return payload.comment
+    }
+
+    /// POST whose response body we don't need.
+    private func action(_ path: String, body: [String: Any]) async throws {
+        do {
+            let _: IgnoredPayload = try await post(path, body: body)
+        } catch XHSError.emptyData {
+            // Success without data.
+        }
+    }
+
+    /// Query string in a fixed order. Commas stay literal, as the web client sends them.
+    private static func query(_ items: KeyValuePairs<String, String>) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-_.,")
+        return "?" + items.map { "\($0)=\($1.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")" }
+            .joined(separator: "&")
     }
 
     // MARK: - Requests
