@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 
 enum XHSError: LocalizedError, Equatable {
     /// HTTP 406: the request was missing a valid signature.
@@ -35,6 +36,8 @@ final class XHSClient {
     private let signer: RequestSigner
     private let session: URLSession
     private let cookieStorage: HTTPCookieStorage
+
+    private static let log = Logger(subsystem: "com.seal-yue.Schwarznote", category: "api")
 
     private static let userAgent =
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
@@ -109,6 +112,14 @@ final class XHSClient {
 
         let (data, response) = try await session.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        #if DEBUG
+        let setCookies = ((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Set-Cookie") ?? "")
+            .split(separator: ",").compactMap { $0.split(separator: "=").first?.trimmingCharacters(in: .whitespaces) }
+        Self.log.debug("""
+            \(path, privacy: .public) → \(status) set-cookie=\(setCookies.joined(separator: ","), privacy: .public) \
+            body=\(String(decoding: data.prefix(500), as: UTF8.self), privacy: .public)
+            """)
+        #endif
         switch status {
         case 200..<300: break
         case 406: throw XHSError.signatureRequired
