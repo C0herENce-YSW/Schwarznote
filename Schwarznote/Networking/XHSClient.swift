@@ -380,6 +380,8 @@ final class XHSClient {
         let envelope = try JSONDecoder().decode(XHSResponse<T>.self, from: data)
         guard envelope.success else {
             if envelope.code == 300012 { throw XHSError.networkRejected }
+            // "登录已过期": the saved session is no longer valid (sent with HTTP 200).
+            if envelope.code == -100 { throw XHSError.notLoggedIn }
             throw XHSError.api(code: envelope.code, message: envelope.msg)
         }
         guard let payload = envelope.data else { throw XHSError.emptyData }
