@@ -11,7 +11,7 @@ import SwiftUI
 /// On its own, the strip holds the focus: moving along it switches the big view (live photos play
 /// once as you land on them), and selecting a thumbnail opens that picture full screen, or the
 /// video player for a video. With an `index` binding, the parent changes pages instead (the note
-/// page does it with left and right clicks), nothing here takes focus, and setting
+/// page does it with left and right swipes), nothing here takes focus, and setting
 /// `fullScreenRequest` opens the current page.
 struct MediaViewer: View {
     let media: [MediaItem]
@@ -177,7 +177,7 @@ struct MediaViewer: View {
             }
             .animation(.easeOut(duration: 0.15), value: index)
 
-            Text("\(index + 1) / \(media.count)  ·  按遥控器左右键切换")
+            Text("\(index + 1) / \(media.count)  ·  在触控板上左右滑动切换")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

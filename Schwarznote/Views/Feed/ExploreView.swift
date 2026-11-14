@@ -169,13 +169,25 @@ struct ChipStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .modifier(ChipLook(isSelected: isSelected, isLit: isFocused, isPressed: configuration.isPressed))
+    }
+}
+
+/// The chip look on its own, for views that show a highlight without taking focus.
+struct ChipLook: ViewModifier {
+    let isSelected: Bool
+    let isLit: Bool
+    var isPressed = false
+
+    func body(content: Content) -> some View {
+        content
             .padding(.vertical, 14)
             .padding(.horizontal, 20)
-            .foregroundStyle(isFocused ? Color.black : (isSelected ? Color.primary : Color.secondary))
+            .foregroundStyle(isLit ? Color.black : (isSelected ? Color.primary : Color.secondary))
             .background {
-                Capsule().fill(isFocused ? Color.white : (isSelected ? Color.primary.opacity(0.12) : .clear))
+                Capsule().fill(isLit ? Color.white : (isSelected ? Color.primary.opacity(0.12) : .clear))
             }
-            .scaleEffect(isFocused ? 1.1 : (configuration.isPressed ? 0.95 : 1))
-            .animation(.easeOut(duration: 0.15), value: isFocused)
+            .scaleEffect(isLit ? 1.1 : (isPressed ? 0.95 : 1))
+            .animation(.easeOut(duration: 0.15), value: isLit)
     }
 }

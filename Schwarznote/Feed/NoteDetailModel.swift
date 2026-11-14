@@ -76,10 +76,13 @@ final class NoteDetailModel {
     /// Follows or unfollows the note's author.
     func setFollowing(_ following: Bool, client: XHSClient) async {
         guard let before = detail?.relation else { return }
+        // Read the ID first: assigning `detail?.relation` while the right-hand side still reads
+        // `detail` is an overlapping access, which crashes.
+        let userID = detail?.author.id ?? note.author.id
         detail?.relation = before.with(following: following)
         do {
-            detail?.relation = try await client.setFollowing(following, userID: detail?.author.id ?? note.author.id,
-                                                             current: before)
+            let relation = try await client.setFollowing(following, userID: userID, current: before)
+            detail?.relation = relation
         } catch {
             detail?.relation = before
             actionError = error.localizedDescription
@@ -120,7 +123,8 @@ final class NoteDetailModel {
             } else {
                 comments.prepend(comment)
             }
-            detail?.commentCount = detail?.commentCount.adjustedCount(by: 1) ?? "1"
+            let count = detail?.commentCount.adjustedCount(by: 1) ?? "1"
+            detail?.commentCount = count
             return true
         } catch {
             actionError = error.localizedDescription

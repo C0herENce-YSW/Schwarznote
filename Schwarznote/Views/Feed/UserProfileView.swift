@@ -141,8 +141,6 @@ struct FollowButton: View {
             }
         } label: {
             Text(relation.title)
-                .font(.callout.weight(.semibold))
-                .padding(.horizontal, 10)
         }
         .buttonStyle(FollowStyle(isFollowing: relation.isFollowing))
         .confirmationDialog("不再关注\(nickname)？", isPresented: $confirmingUnfollow, titleVisibility: .visible) {
@@ -159,11 +157,24 @@ private struct FollowStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .modifier(FollowLook(isFollowing: isFollowing, isLit: isFocused, isPressed: configuration.isPressed))
+    }
+}
+
+/// The follow button's look on its own, for views that show a highlight without taking focus.
+struct FollowLook: ViewModifier {
+    let isFollowing: Bool
+    let isLit: Bool
+    var isPressed = false
+
+    func body(content: Content) -> some View {
+        content
+            .font(.callout.weight(.semibold))
             .padding(.vertical, 12)
-            .padding(.horizontal, 22)
-            .foregroundStyle(isFocused ? Color.black : (isFollowing ? Color.secondary : Color.white))
+            .padding(.horizontal, 32)
+            .foregroundStyle(isLit ? Color.black : (isFollowing ? Color.secondary : Color.white))
             .background {
-                if isFocused {
+                if isLit {
                     Capsule().fill(Color.white)
                 } else if isFollowing {
                     Capsule().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 2)
@@ -171,7 +182,7 @@ private struct FollowStyle: ButtonStyle {
                     Capsule().fill(Color.accentColor)
                 }
             }
-            .scaleEffect(isFocused ? 1.1 : (configuration.isPressed ? 0.95 : 1))
-            .animation(.easeOut(duration: 0.15), value: isFocused)
+            .scaleEffect(isLit ? 1.1 : (isPressed ? 0.95 : 1))
+            .animation(.easeOut(duration: 0.15), value: isLit)
     }
 }
