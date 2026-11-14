@@ -73,6 +73,27 @@ final class NoteDetailModel {
         }
     }
 
+    /// Follows or unfollows the note's author.
+    func setFollowing(_ following: Bool, client: XHSClient) async {
+        guard let before = detail?.relation else { return }
+        detail?.relation = before.with(following: following)
+        do {
+            detail?.relation = try await client.setFollowing(following, userID: detail?.author.id ?? note.author.id,
+                                                             current: before)
+        } catch {
+            detail?.relation = before
+            actionError = error.localizedDescription
+        }
+    }
+
+    /// The author's profile, which keeps this note's follow button in step.
+    func makeAuthorProfile() -> UserProfileModel {
+        let profile = UserProfileModel(author: detail?.author ?? note.author, relation: detail?.relation ?? .none,
+                                       fallbackToken: note.xsecToken)
+        profile.onRelationChange = { [weak self] relation in self?.detail?.relation = relation }
+        return profile
+    }
+
     func toggleLike(of comment: Comment, client: XHSClient) async {
         let liked = !comment.liked
         editComment(comment.id) {

@@ -88,6 +88,9 @@ struct ErrorView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 80)
+        // The button sits in the middle of the page; a full-width section lets moving down
+        // from a chip at either side still reach it.
+        .focusSection()
     }
 }
 

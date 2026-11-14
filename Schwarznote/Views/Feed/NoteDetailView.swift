@@ -13,11 +13,13 @@ struct NoteDetailView: View {
     @State private var model: NoteDetailModel
     @State private var draft = ""
     @State private var replyTarget: Comment?
+    @State private var authorProfile: UserProfileModel?
     @FocusState private var composerFocused: Bool
     private let focusComposerOnOpen: Bool
 
-    init(note: Note) {
-        _model = State(initialValue: NoteDetailModel(note: note))
+    /// `xsecSource` says where the note was opened: "pc_feed" for the feed, "pc_user" for a profile.
+    init(note: Note, xsecSource: String = "pc_feed") {
+        _model = State(initialValue: NoteDetailModel(note: note, xsecSource: xsecSource))
         focusComposerOnOpen = false
     }
 
@@ -28,6 +30,7 @@ struct NoteDetailView: View {
     }
 
     private var note: Note { model.note }
+    private var author: Author { model.detail?.author ?? note.author }
 
     /// Until the detail loads, show the feed card's cover.
     private var media: [MediaItem] {
@@ -61,6 +64,17 @@ struct NoteDetailView: View {
             try? await Task.sleep(for: .milliseconds(400))
             composerFocused = true
         }
+        #if DEBUG
+        .task(id: model.detail == nil) {
+            // Launch argument for testing without a remote: `-openProfile YES` opens the author.
+            if model.detail != nil, UserDefaults.standard.bool(forKey: "openProfile"), authorProfile == nil {
+                authorProfile = model.makeAuthorProfile()
+            }
+        }
+        #endif
+        .fullScreenCover(item: $authorProfile) { profile in
+            UserProfileView(model: profile)
+        }
         .onAppear { shortcuts.handler = handleShortcut }
         .onDisappear { shortcuts.handler = nil }
         .alert("操作失败", isPresented: Binding(
@@ -77,11 +91,28 @@ struct NoteDetailView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 20) {
-                AvatarView(author: model.detail?.author ?? note.author, size: 72)
-                Text((model.detail?.author ?? note.author).nickname)
-                    .font(.title3.weight(.semibold))
+            HStack(spacing: 24) {
+                // Selecting the author opens their profile.
+                Button {
+                    authorProfile = model.makeAuthorProfile()
+                } label: {
+                    HStack(spacing: 20) {
+                        AvatarView(author: author, size: 72)
+                        Text(author.nickname)
+                            .font(.title3.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(RowStyle())
+
+                if let detail = model.detail, author.id != auth.currentUser?.userId {
+                    FollowButton(relation: detail.relation, nickname: author.nickname) { following in
+                        requireLogin { await model.setFollowing(following, client: auth.client) }
+                    }
+                }
             }
+            // RowStyle pads the author button; line it up with the text below.
+            .padding(.leading, -16)
 
             Text(model.detail?.title.isEmpty == false ? model.detail!.title : note.title)
                 .font(.title2.bold())

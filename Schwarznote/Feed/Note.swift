@@ -9,11 +9,14 @@ nonisolated struct Author: Hashable, Sendable, Decodable {
     let id: String
     let nickname: String
     let avatarURL: URL?
+    /// Opens the user's profile; notes carry one for their author.
+    let xsecToken: String?
 
-    init(id: String, nickname: String, avatarURL: URL?) {
+    init(id: String, nickname: String, avatarURL: URL?, xsecToken: String? = nil) {
         self.id = id
         self.nickname = nickname
         self.avatarURL = avatarURL
+        self.xsecToken = xsecToken
     }
 
     init(from decoder: Decoder) throws {
@@ -21,10 +24,12 @@ nonisolated struct Author: Hashable, Sendable, Decodable {
         id = c.string("user_id", "userid") ?? ""
         nickname = c.string("nickname", "nick_name") ?? ""
         avatarURL = URL(webImage: c.string("avatar", "image", "images"))
+        xsecToken = c.string("xsec_token")
     }
 }
 
-/// One card of `POST /api/sns/web/v1/homefeed` → data.items.
+/// One card of `POST /api/sns/web/v1/homefeed` → data.items, or of a user's posted notes
+/// (`GET /api/sns/web/v1/user_posted` → data.notes), which has the card's fields at the top level.
 nonisolated struct Note: Identifiable, Hashable, Sendable, Decodable {
     let id: String
     /// Needed later to open the note's detail.
@@ -54,8 +59,9 @@ nonisolated struct Note: Identifiable, Hashable, Sendable, Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
-        guard let id = c.string("id"), c.string("model_type") ?? "note" == "note",
-              let card = c.nested("note_card") else { throw NotANote() }
+        guard let id = c.string("id", "note_id"), c.string("model_type") ?? "note" == "note",
+              let card = c.nested("note_card") ?? (c.contains(AnyKey("note_id")) ? c : nil)
+        else { throw NotANote() }
         self.id = id
         xsecToken = c.string("xsec_token")
         title = card.string("display_title") ?? ""

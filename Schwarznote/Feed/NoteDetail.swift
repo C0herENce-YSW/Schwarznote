@@ -19,6 +19,8 @@ nonisolated struct NoteDetail: Sendable, Decodable {
     var collected: Bool
     var collects: String
     var commentCount: String
+    /// Whether the account follows the note's author.
+    var relation: FollowRelation
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: AnyKey.self)
@@ -37,6 +39,8 @@ nonisolated struct NoteDetail: Sendable, Decodable {
         collected = interact?.value(Bool.self, "collected") ?? false
         collects = interact?.string("collected_count") ?? "0"
         commentCount = interact?.string("comment_count") ?? "0"
+        relation = FollowRelation(rawValue: interact?.string("relation") ?? "")
+            ?? (interact?.value(Bool.self, "followed") == true ? .follows : .none)
 
         let images = card.value([ImageEntry].self, "image_list") ?? []
         if let stream = card.nested("video")?.nested("media")?.nested("stream"),

@@ -181,6 +181,36 @@ final class XHSClient {
         ]))
     }
 
+    // MARK: - Users
+
+    /// Someone else's profile. `xsecSource` is where it was opened from ("pc_note" from a note).
+    func userProfile(id: String, xsecToken: String, xsecSource: String) async throws -> UserProfile {
+        try await get("/api/sns/web/v1/user/otherinfo" + Self.query([
+            "target_user_id": id, "xsec_token": xsecToken, "xsec_source": xsecSource,
+        ]))
+    }
+
+    /// The user's posted notes, newest first.
+    func userNotes(id: String, xsecToken: String, xsecSource: String, cursor: String) async throws -> Pager<Note>.Page {
+        let page: UserNotesPage = try await get("/api/sns/web/v1/user_posted" + Self.query([
+            "num": "30", "cursor": cursor, "user_id": id, "image_formats": "jpg,webp,avif",
+            "xsec_token": xsecToken, "xsec_source": xsecSource,
+        ]))
+        return .init(items: page.notes, cursor: page.cursor, hasMore: page.hasMore)
+    }
+
+    /// Follows or unfollows a user and returns the new relation.
+    func setFollowing(_ following: Bool, userID: String, current: FollowRelation) async throws -> FollowRelation {
+        let path = following ? "/api/sns/web/v1/user/follow" : "/api/sns/web/v1/user/unfollow"
+        let expected = current.with(following: following)
+        do {
+            let payload: FollowPayload = try await post(path, body: ["target_user_id": userID])
+            return payload.relation ?? expected
+        } catch XHSError.emptyData {
+            return expected
+        }
+    }
+
     // MARK: - Actions
 
     func setLiked(_ liked: Bool, noteID: String) async throws {
