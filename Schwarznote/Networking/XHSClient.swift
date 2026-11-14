@@ -201,6 +201,22 @@ final class XHSClient {
         return .init(items: payload.notes, cursor: String(page + 1), hasMore: payload.hasMore)
     }
 
+    /// One page of accounts matching `keyword`. Pages start at 1.
+    func searchUsers(keyword: String, page: Int, searchID: String) async throws -> Pager<UserSearchResult>.Page {
+        let requestID = "\(Int.random(in: 1...0x7ffffffe))-\(Int(Date.now.timeIntervalSince1970 * 1000))"
+        let payload: UserSearchPage = try await post("/api/sns/web/v1/search/usersearch", body: [
+            "search_user_request": [
+                "keyword": keyword,
+                "search_id": searchID,
+                "page": page,
+                "page_size": 15,
+                "biz_type": "web_search_user",
+                "request_id": requestID,
+            ] as [String: Any],
+        ])
+        return .init(items: payload.users, cursor: String(page + 1), hasMore: payload.hasMore)
+    }
+
     /// Completions for a partly typed query.
     func searchSuggestions(for keyword: String) async throws -> [String] {
         let payload: SearchWordsPayload = try await get(

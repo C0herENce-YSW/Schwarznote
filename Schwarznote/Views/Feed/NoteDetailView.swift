@@ -6,6 +6,10 @@
 import SwiftUI
 
 /// Note detail like the web modal: media on the left; author, text, actions and comments on the right.
+///
+/// Remote: clicking left or right on the clickpad changes the picture; swiping moves around the
+/// right-hand column (left and right between 关注 / 点赞 / 收藏 / 评论 and the like, up and down
+/// through the text and comments). Focus never goes to the pictures themselves.
 struct NoteDetailView: View {
     @Environment(AuthModel.self) private var auth
     @Environment(ShortcutCenter.self) private var shortcuts
@@ -14,6 +18,8 @@ struct NoteDetailView: View {
     @State private var draft = ""
     @State private var replyTarget: Comment?
     @State private var authorProfile: UserProfileModel?
+    @State private var mediaIndex = 0
+    @State private var showsMediaFullScreen = false
     @FocusState private var composerFocused: Bool
     private let focusComposerOnOpen: Bool
 
@@ -40,7 +46,7 @@ struct NoteDetailView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            MediaViewer(media: media)
+            MediaViewer(media: media, index: $mediaIndex, fullScreenRequest: $showsMediaFullScreen)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 32) {
@@ -56,6 +62,9 @@ struct NoteDetailView: View {
             .background(.regularMaterial)
         }
         .ignoresSafeArea()
+        .background(ArrowClickMonitor(isEnabled: media.count > 1) { step in
+            mediaIndex = (mediaIndex + step + media.count) % media.count
+        })
         .onExitCommand { dismiss() }
         .task { await model.load(client: auth.client) }
         .task {
@@ -157,6 +166,7 @@ struct NoteDetailView: View {
     private var actionBar: some View {
         HStack(spacing: 20) {
             if let detail = model.detail {
+                mediaButton
                 actionButton(detail.likes, systemImage: detail.liked ? "heart.fill" : "heart",
                              active: detail.liked) { await model.toggleLike(client: auth.client) }
                 actionButton(detail.collects, systemImage: detail.collected ? "star.fill" : "star",
@@ -169,6 +179,23 @@ struct NoteDetailView: View {
                 }
                 .buttonStyle(ChipStyle(isSelected: false))
             }
+        }
+    }
+
+    /// Opens the current picture full screen, or plays the video.
+    @ViewBuilder
+    private var mediaButton: some View {
+        if let item = media.indices.contains(mediaIndex) ? media[mediaIndex] : media.first {
+            Button {
+                showsMediaFullScreen = true
+            } label: {
+                switch item.kind {
+                case .image: Label("大图", systemImage: "arrow.up.left.and.arrow.down.right")
+                case .livePhoto: Label("实况", systemImage: "livephoto")
+                case .video: Label("播放", systemImage: "play.fill")
+                }
+            }
+            .buttonStyle(ChipStyle(isSelected: false))
         }
     }
 

@@ -35,6 +35,56 @@ enum SearchNoteType: Int, CaseIterable, Hashable, Sendable {
     }
 }
 
+/// What the results list: notes or accounts.
+enum SearchScope: String, CaseIterable, Hashable, Sendable {
+    case notes, users
+
+    var title: String {
+        switch self {
+        case .notes: "笔记"
+        case .users: "用户"
+        }
+    }
+}
+
+/// One account in `POST /api/sns/web/v1/search/usersearch` → data.users.
+nonisolated struct UserSearchResult: Identifiable, Sendable, Decodable {
+    let author: Author
+    let redID: String?
+    /// Already formatted by the server, e.g. "1.2万".
+    let fans: String?
+    let noteCount: String?
+    let relation: FollowRelation
+
+    var id: String { author.id }
+
+    private struct Invalid: Error {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        guard let id = c.string("id", "user_id"), !id.isEmpty else { throw Invalid() }
+        author = Author(id: id, nickname: c.string("name", "nickname") ?? "",
+                        avatarURL: URL(webImage: c.string("image", "avatar")),
+                        xsecToken: c.string("xsec_token"))
+        redID = c.string("red_id")
+        fans = c.string("fans")
+        noteCount = c.string("note_count")
+        relation = c.value(Bool.self, "followed") == true ? .follows : .none
+    }
+}
+
+/// `POST /api/sns/web/v1/search/usersearch` → data
+nonisolated struct UserSearchPage: Decodable, Sendable {
+    let users: [UserSearchResult]
+    let hasMore: Bool
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyKey.self)
+        users = c.value(LossyArray<UserSearchResult>.self, "users")?.elements ?? []
+        hasMore = c.value(Bool.self, "has_more") ?? false
+    }
+}
+
 /// `POST /api/sns/web/v1/search/notes` → data
 nonisolated struct SearchNotesPage: Decodable, Sendable {
     let notes: [Note]
@@ -94,7 +144,9 @@ final class SearchModel {
     private(set) var keyword = ""
     var sort = SearchSort.general
     var noteType = SearchNoteType.all
+    var scope = SearchScope.notes
     let results = Pager<Note>()
+    let users = Pager<UserSearchResult>()
     /// Completions for what's being typed.
     private(set) var suggestions: [String] = []
     /// 猜你想搜, shown before searching.
@@ -130,11 +182,18 @@ final class SearchModel {
             searchID = makeSearchID()
         }
         let id = searchID
-        let sort = sort
-        let noteType = noteType
-        await results.reset { cursor, _ in
-            try await client.searchNotes(keyword: text, page: Int(cursor) ?? 1, searchID: id,
-                                         sort: sort, noteType: noteType)
+        switch scope {
+        case .notes:
+            let sort = sort
+            let noteType = noteType
+            await results.reset { cursor, _ in
+                try await client.searchNotes(keyword: text, page: Int(cursor) ?? 1, searchID: id,
+                                             sort: sort, noteType: noteType)
+            }
+        case .users:
+            await users.reset { cursor, _ in
+                try await client.searchUsers(keyword: text, page: Int(cursor) ?? 1, searchID: id)
+            }
         }
     }
 }

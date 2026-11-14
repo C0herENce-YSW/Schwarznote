@@ -6,17 +6,44 @@
 import AVKit
 import SwiftUI
 
-/// Left side of the note detail. Multiple pages get a thumbnail strip: moving focus along it
-/// switches the big view (live photos play once as you land on them), and selecting a thumbnail
-/// opens that picture full screen, or the video player for a video.
+/// Left side of a note. Multiple pages get a thumbnail strip.
+///
+/// On its own, the strip holds the focus: moving along it switches the big view (live photos play
+/// once as you land on them), and selecting a thumbnail opens that picture full screen, or the
+/// video player for a video. With an `index` binding, the parent changes pages instead (the note
+/// page does it with left and right clicks), nothing here takes focus, and setting
+/// `fullScreenRequest` opens the current page.
 struct MediaViewer: View {
     let media: [MediaItem]
+    private let controlledIndex: Binding<Int>?
+    private let fullScreenRequest: Binding<Bool>?
 
-    @State private var index = 0
+    @State private var ownIndex = 0
     @State private var playingLive = false
     @State private var fullScreenVideo: PlayableVideo?
     @State private var fullScreenPhoto: PhotoPage?
     @FocusState private var focusedThumbnail: Int?
+
+    init(media: [MediaItem]) {
+        self.media = media
+        controlledIndex = nil
+        fullScreenRequest = nil
+    }
+
+    init(media: [MediaItem], index: Binding<Int>, fullScreenRequest: Binding<Bool>) {
+        self.media = media
+        controlledIndex = index
+        self.fullScreenRequest = fullScreenRequest
+    }
+
+    private var isControlled: Bool { controlledIndex != nil }
+
+    private var index: Int {
+        get { controlledIndex?.wrappedValue ?? ownIndex }
+        nonmutating set {
+            if let controlledIndex { controlledIndex.wrappedValue = newValue } else { ownIndex = newValue }
+        }
+    }
 
     private var current: MediaItem? {
         media.isEmpty ? nil : media[min(index, media.count - 1)]
@@ -28,8 +55,12 @@ struct MediaViewer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if media.count > 1 {
-                thumbnails
-            } else if let current {
+                if isControlled {
+                    pageStrip
+                } else {
+                    thumbnails
+                }
+            } else if !isControlled, let current {
                 Button {
                     activate(current)
                 } label: {
@@ -52,6 +83,15 @@ struct MediaViewer: View {
         .onChange(of: media) {
             index = 0
             playingLive = media.first?.kind == .livePhoto
+        }
+        .onChange(of: index) { _, index in
+            guard isControlled, media.indices.contains(index) else { return }
+            playingLive = media[index].kind == .livePhoto
+        }
+        .onChange(of: fullScreenRequest?.wrappedValue ?? false) { _, requested in
+            guard requested, let current else { return }
+            fullScreenRequest?.wrappedValue = false
+            activate(current)
         }
         .fullScreenCover(item: $fullScreenVideo) { video in
             VideoPlayerScreen(url: video.url)
@@ -101,6 +141,46 @@ struct MediaViewer: View {
             .padding(.vertical, 20)
         }
         .scrollClipDisabled()
+    }
+
+    /// Thumbnails that only show where you are; the current one is outlined and kept in view.
+    private var pageStrip: some View {
+        VStack(spacing: 16) {
+            ScrollViewReader { scroll in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 24) {
+                        ForEach(media) { item in
+                            let isCurrent = item.id == current?.id
+                            RemoteImage(url: item.imageURL, contentMode: .fill)
+                                .frame(width: 120, height: 160)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(.white, lineWidth: isCurrent ? 5 : 0)
+                                }
+                                .overlay(alignment: .topLeading) {
+                                    badge(for: item).scaleEffect(0.7, anchor: .topLeading)
+                                }
+                                .scaleEffect(isCurrent ? 1.08 : 1)
+                                .opacity(isCurrent ? 1 : 0.6)
+                                .id(item.id)
+                        }
+                    }
+                    .padding(.horizontal, 40)
+                    .padding(.vertical, 20)
+                }
+                .scrollClipDisabled()
+                .scrollDisabled(true)
+                .onChange(of: index) {
+                    withAnimation(.easeOut(duration: 0.2)) { scroll.scrollTo(current?.id, anchor: .center) }
+                }
+            }
+            .animation(.easeOut(duration: 0.15), value: index)
+
+            Text("\(index + 1) / \(media.count)  ·  按遥控器左右键切换")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder

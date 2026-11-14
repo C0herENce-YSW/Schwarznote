@@ -116,14 +116,16 @@ final class UserProfileModel: Identifiable {
     var onRelationChange: ((FollowRelation) -> Void)?
 
     private let xsecToken: String
-    private let xsecSource = "pc_note"
+    private let xsecSource: String
 
     var id: String { author.id }
 
     /// `fallbackToken` is the note's token, for authors that arrive without their own.
-    init(author: Author, relation: FollowRelation, fallbackToken: String?) {
+    /// `xsecSource` is where the profile was opened: "pc_note" from a note, "pc_search" from search.
+    init(author: Author, relation: FollowRelation, fallbackToken: String?, xsecSource: String = "pc_note") {
         self.author = author
         self.relation = relation
+        self.xsecSource = xsecSource
         xsecToken = author.xsecToken ?? fallbackToken ?? ""
     }
 
