@@ -10,9 +10,12 @@ Nothing is reimplemented or de-obfuscated.
 The Apple TV app calls:
 
     POST /sign   {"region": "china"|"international", "path": "/api/...", "body": {...} | null}
-    -> {"headers": {"X-s": "...", ...}, "cookies": {"a1": "...", ...}, "userAgent": "..."}
+    -> {"headers": {"X-s": "...", ...}, "cookies": {"a1": "...", ...}, "userAgent": "...",
+        "path": "/api/...?..."}
 
-`body: null` means a GET request; `path` then includes the query string.
+`body: null` means a GET request; `path` then includes the query string. The returned `path`
+is the one the site actually signed: its client can add query parameters (for example
+`client_public_key_base64` on the QR login status call), so the app must send that path.
 
 The signature is bound to the browser's device cookies (a1, webId, ...), so the app must
 send those same cookies and the same User-Agent; the response includes both.
@@ -26,6 +29,7 @@ import asyncio
 import json
 import logging
 import os
+from urllib.parse import urlsplit
 from pathlib import Path
 
 from aiohttp import web
@@ -89,7 +93,10 @@ class Signer:
             }
             user_agent = await page.evaluate("navigator.userAgent")
 
+        signed = urlsplit(result["url"])
+        signed_path = signed.path + (f"?{signed.query}" if signed.query else "")
         return {
+            "path": signed_path or path,
             "headers": {
                 k: v for k, v in result["headers"].items() if k.lower() not in SKIPPED_HEADERS
             },

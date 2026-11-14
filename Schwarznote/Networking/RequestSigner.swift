@@ -14,14 +14,21 @@ protocol RequestSigner: Sendable {
     ///   - region: Which site the request goes to.
     ///   - path: API path including the query string, e.g. `/api/sns/web/v1/login/qrcode/create`.
     ///   - body: The exact JSON bytes that will be sent, or `nil` for GET requests.
-    /// - Returns: Headers to add to the request (may include `User-Agent`).
-    func signatureHeaders(region: XHSRegion, path: String, body: Data?) async throws -> [String: String]
+    func sign(region: XHSRegion, path: String, body: Data?) async throws -> Signature
+}
+
+nonisolated struct Signature: Sendable {
+    /// Headers to add to the request (may include `User-Agent`).
+    var headers: [String: String]
+    /// The path and query that were signed. The web client may add query parameters, and the
+    /// signature only matches if the request goes to exactly this path.
+    var path: String
 }
 
 /// Sends requests unsigned. The server answers these with HTTP 406,
 /// which the client reports as `XHSError.signatureRequired`.
 struct UnsignedSigner: RequestSigner {
-    func signatureHeaders(region: XHSRegion, path: String, body: Data?) async throws -> [String: String] {
-        [:]
+    func sign(region: XHSRegion, path: String, body: Data?) async throws -> Signature {
+        Signature(headers: [:], path: path)
     }
 }

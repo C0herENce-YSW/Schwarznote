@@ -268,9 +268,12 @@ final class XHSClient {
 
     private func send<T: Decodable & Sendable>(_ request: URLRequest, path: String, body: Data?) async throws -> T {
         var request = request
-        let headers = try await signer.signatureHeaders(region: region, path: path, body: body)
-        for (key, value) in headers {
+        let signature = try await signer.sign(region: region, path: path, body: body)
+        for (key, value) in signature.headers {
             request.setValue(value, forHTTPHeaderField: key)
+        }
+        if signature.path != path {
+            request.url = URL(string: signature.path, relativeTo: region.apiBaseURL)
         }
 
         let (data, response) = try await session.data(for: request)

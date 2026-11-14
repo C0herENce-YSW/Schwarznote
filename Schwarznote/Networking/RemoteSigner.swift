@@ -31,13 +31,15 @@ struct RemoteSigner: RequestSigner {
         let headers: [String: String]
         let cookies: [String: String]
         let userAgent: String
+        /// Missing from older signer versions.
+        let path: String?
     }
 
     private nonisolated struct ErrorResponse: Decodable, Sendable {
         let error: String
     }
 
-    func signatureHeaders(region: XHSRegion, path: String, body: Data?) async throws -> [String: String] {
+    func sign(region: XHSRegion, path: String, body: Data?) async throws -> Signature {
         var request = URLRequest(url: baseURL.appending(path: "sign"))
         request.httpMethod = "POST"
         request.timeoutInterval = 30
@@ -77,6 +79,6 @@ struct RemoteSigner: RequestSigner {
 
         var headers = signed.headers
         headers["User-Agent"] = signed.userAgent
-        return headers
+        return Signature(headers: headers, path: signed.path ?? path)
     }
 }
