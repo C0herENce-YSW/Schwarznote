@@ -34,22 +34,35 @@ nonisolated struct QRCodeStatusPayload: Decodable, Sendable {
 
 /// Scan state shown on screen.
 ///
-/// Observed: 0 = waiting, 1 = scanned, 2 = confirmed on the phone,
-/// 3 = code no longer valid ("二维码为空"); the app then creates a new code.
+/// Observed codes: 0 = waiting, 1 = scanned, 2 = confirmed on the phone,
+/// 3 = code no longer valid ("二维码为空"); a new code is then made.
 enum QRCodeStatus: Equatable, Sendable {
     case waitingForScan
     case scanned
     case confirmed
+    /// The page is replacing an expired code.
     case expired
-    case unknown(Int)
+    case unknown(String)
 
-    init(rawValue: Int) {
-        switch rawValue {
+    /// From the API's `codeStatus`.
+    init(code: Int) {
+        switch code {
         case 0: self = .waitingForScan
         case 1: self = .scanned
         case 2: self = .confirmed
         case 3: self = .expired
-        default: self = .unknown(rawValue)
+        default: self = .unknown(String(code))
+        }
+    }
+
+    /// From the signer's web login status.
+    init(_ status: String) {
+        switch status {
+        case "waiting": self = .waitingForScan
+        case "scanned": self = .scanned
+        case "confirmed": self = .confirmed
+        case "expired", "loading": self = .expired
+        default: self = .unknown(status)
         }
     }
 }

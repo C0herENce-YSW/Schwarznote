@@ -24,11 +24,3 @@ nonisolated struct Signature: Sendable {
     /// signature only matches if the request goes to exactly this path.
     var path: String
 }
-
-/// Sends requests unsigned. The server answers these with HTTP 406,
-/// which the client reports as `XHSError.signatureRequired`.
-struct UnsignedSigner: RequestSigner {
-    func sign(region: XHSRegion, path: String, body: Data?) async throws -> Signature {
-        Signature(headers: [:], path: path)
-    }
-}

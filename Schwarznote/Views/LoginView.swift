@@ -9,22 +9,27 @@ struct LoginView: View {
     @Environment(AuthModel.self) private var auth
     @State private var model = QRLoginModel()
     @State private var attempt = 0
+    /// Also settable as a launch argument for testing, e.g. `-loginMethod api`.
+    @AppStorage("loginMethod") private var method = LoginMethod.web
 
     var body: some View {
         @Bindable var auth = auth
 
-        HStack(spacing: 120) {
+        HStack(spacing: 100) {
             qrPanel
                 .frame(width: 520, height: 520)
 
-            VStack(alignment: .leading, spacing: 36) {
+            VStack(alignment: .leading, spacing: 24) {
                 Text("Schwarznote")
                     .font(.largeTitle.bold())
                 Text("打开手机上的小红书 App，扫描左侧二维码登录")
                     .font(.title3)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 statusLabel
+                    .font(.callout)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Picker("地区", selection: $auth.region) {
                     ForEach(XHSRegion.allCases) { region in
@@ -33,24 +38,24 @@ struct LoginView: View {
                 }
                 .frame(maxWidth: 700)
 
-                TextField("签名服务地址，例如 http://192.168.1.10:8790", text: $auth.signerURL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .frame(maxWidth: 700)
-                SecureField("签名服务口令（可选）", text: $auth.signerToken)
-                    .frame(maxWidth: 700)
+                Picker("登录方式", selection: $method) {
+                    ForEach(LoginMethod.allCases) { method in
+                        Text(method.title).tag(method)
+                    }
+                }
+                .frame(maxWidth: 700)
+
 
                 if case .failed = model.phase {
                     Button("重试") { attempt += 1 }
                 }
             }
-            .frame(maxWidth: 800, alignment: .leading)
+            .frame(maxWidth: 900, alignment: .leading)
         }
-        .padding(80)
-        // Restart the flow on retry or when the region or signer (and therefore the client) changes.
-        .task(id: "\(attempt)-\(auth.region.rawValue)-\(auth.signerURL)-\(auth.signerToken)") {
-            await model.run(auth: auth)
+        .padding(.horizontal, 80)
+        // Restart the flow on retry, or when the method or region (and so the client) changes.
+        .task(id: "\(attempt)-\(method.rawValue)-\(auth.region.rawValue)") {
+            await model.run(auth: auth, method: method)
         }
     }
 
@@ -63,10 +68,23 @@ struct LoginView: View {
             case .loading:
                 ProgressView()
                     .tint(.black)
-            case .showing(let ticket, let status):
-                QRCodeImage(content: ticket.url)
-                    .padding(36)
-                    .opacity(status == .scanned ? 0.25 : 1)
+            case .showing(let code, let status):
+                Group {
+                    switch code {
+                    case .link(let url):
+                        QRCodeImage(content: url)
+                    case .picture(let data):
+                        if let image = UIImage(data: data) {
+                            // Scaled up square by square, so it stays sharp.
+                            Image(uiImage: image)
+                                .interpolation(.none)
+                                .resizable()
+                                .scaledToFit()
+                        }
+                    }
+                }
+                .padding(36)
+                .opacity(status == .scanned ? 0.25 : 1)
                 if status == .scanned {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 120))

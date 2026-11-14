@@ -33,4 +33,12 @@ enum XHSRegion: String, CaseIterable, Identifiable, Sendable {
         case .international: "https://www.rednote.com"
         }
     }
+
+    /// The site's registrable domain, which its cookies belong to.
+    var siteDomain: String {
+        switch self {
+        case .china: "xiaohongshu.com"
+        case .international: "rednote.com"
+        }
+    }
 }

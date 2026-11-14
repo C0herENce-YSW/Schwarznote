@@ -21,7 +21,7 @@ enum XHSError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .signatureRequired:
-            "服务器拒绝了请求（HTTP 406）：缺少有效的请求签名。请先配置签名来源。"
+            "服务器拒绝了请求（HTTP 406）：请求签名无效，请重试。"
         case .http(let status):
             "网络请求失败（HTTP \(status)）"
         case .api(let code, let message):
@@ -52,9 +52,6 @@ final class XHSClient {
 
     private static let log = Logger(subsystem: "com.seal-yue.Schwarznote", category: "api")
 
-    private static let userAgent =
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
-
     init(region: XHSRegion, signer: RequestSigner, cookieStorage: HTTPCookieStorage = .shared) {
         self.region = region
         self.signer = signer
@@ -72,6 +69,8 @@ final class XHSClient {
 
     // MARK: - Login
 
+    // The app's own QR login: these are the calls the web page makes, sent by the app itself.
+
     func createQRCode() async throws -> QRCodeTicket {
         try await post("/api/sns/web/v1/login/qrcode/create", body: ["qr_type": 1])
     }
@@ -81,7 +80,7 @@ final class XHSClient {
             "/api/qrcode/userinfo",
             body: ["qrId": ticket.qrId, "code": ticket.code]
         )
-        return QRCodeStatus(rawValue: payload.codeStatus ?? 0)
+        return QRCodeStatus(code: payload.codeStatus ?? 0)
     }
 
     /// After the phone confirms (codeStatus 2), this call is expected to issue the
@@ -333,7 +332,7 @@ final class XHSClient {
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue(region.webOrigin, forHTTPHeaderField: "Origin")
         request.setValue(region.webOrigin + "/", forHTTPHeaderField: "Referer")
-        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(WebPage.userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 15
         return request
     }

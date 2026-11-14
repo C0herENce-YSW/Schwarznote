@@ -41,50 +41,19 @@ final class AuthModel {
         }
     }
 
-    /// Address of the signing service from `signer/`, e.g. `http://192.168.1.10:8790`.
-    var signerURL: String {
-        didSet {
-            guard signerURL != oldValue else { return }
-            UserDefaults.standard.set(signerURL, forKey: Self.signerURLKey)
-            rebuildClient()
-        }
-    }
-
-    /// Optional shared secret matching `SIGNER_TOKEN` on the Mac.
-    var signerToken: String {
-        didSet {
-            guard signerToken != oldValue else { return }
-            UserDefaults.standard.set(signerToken, forKey: Self.signerTokenKey)
-            rebuildClient()
-        }
-    }
-
     private let store = SessionStore()
     private static let regionKey = "region"
-    private static let signerURLKey = "signerURL"
-    private static let signerTokenKey = "signerToken"
 
     init() {
         let defaults = UserDefaults.standard
         let saved = defaults.string(forKey: Self.regionKey).flatMap(XHSRegion.init(rawValue:))
         let region = saved ?? (Locale.current.region?.identifier == "CN" ? .china : .international)
-        let signerURL = defaults.string(forKey: Self.signerURLKey) ?? "http://localhost:8790"
-        let signerToken = defaults.string(forKey: Self.signerTokenKey) ?? ""
         self.region = region
-        self.signerURL = signerURL
-        self.signerToken = signerToken
-        self.client = XHSClient(region: region, signer: Self.makeSigner(url: signerURL, token: signerToken))
-    }
-
-    private static func makeSigner(url: String, token: String) -> RequestSigner {
-        guard let base = URL(string: url.trimmingCharacters(in: .whitespaces)), base.host() != nil else {
-            return UnsignedSigner()
-        }
-        return RemoteSigner(baseURL: base, token: token.isEmpty ? nil : token)
+        self.client = XHSClient(region: region, signer: WebSigner.shared)
     }
 
     private func rebuildClient() {
-        client = XHSClient(region: region, signer: Self.makeSigner(url: signerURL, token: signerToken))
+        client = XHSClient(region: region, signer: WebSigner.shared)
     }
 
     /// Restores saved cookies and checks whether the session is still valid.
@@ -95,6 +64,8 @@ final class AuthModel {
             return
         }
         saved.forEach { HTTPCookieStorage.shared.setCookie($0) }
+        // The pages too, before they load, so they keep the device cookies the session belongs to.
+        await WebPage.setCookies(saved)
         do {
             let user = try await client.currentUser()
             state = user.guest == true ? .loggedOut : .loggedIn(user)
@@ -106,20 +77,56 @@ final class AuthModel {
         }
     }
 
-    /// Call after the QR flow reports success. Returns false if no session cookie arrived.
-    @discardableResult
-    func completeLogin() async -> Bool {
+    /// For the app's own QR login: call after the phone confirms. Returns false if no logged-in
+    /// session arrived.
+    func completeAPILogin() async -> Bool {
         let cookies = client.cookies
         guard cookies.contains(where: { $0.name == SessionStore.sessionCookieName }) else { return false }
-        store.save(cookies)
         let user = try? await client.currentUser()
+        if user?.guest == true { return false }
+        store.save(cookies)
+        await WebPage.setCookies(cookies)
         state = .loggedIn(user)
         return true
     }
 
+    /// Takes over the login the hidden login page just finished: its cookies become the app's.
+    func completeWebLogin() async throws {
+        let cookies = await WebPage.cookies(for: region.siteDomain)
+        guard cookies.contains(where: { $0.name == SessionStore.sessionCookieName }) else {
+            throw WebLoginError.noSession
+        }
+        cookies.forEach { HTTPCookieStorage.shared.setCookie($0) }
+        let user: XHSUser
+        do {
+            user = try await client.currentUser()
+            guard user.guest != true else { throw WebLoginError.noSession }
+        } catch {
+            client.cookies.filter { $0.name == SessionStore.sessionCookieName }
+                .forEach { HTTPCookieStorage.shared.deleteCookie($0) }
+            throw error
+        }
+        store.save(client.cookies)
+        state = .loggedIn(user)
+    }
+
     func logOut() {
         store.clear()
+        let domain = region.siteDomain
+        Task { await WebPage.deleteCookies(named: SessionStore.sessionCookieName, for: domain) }
         HTTPCookieStorage.shared.cookies?.forEach { HTTPCookieStorage.shared.deleteCookie($0) }
         state = .loggedOut
+    }
+}
+
+enum WebLoginError: LocalizedError {
+    case noSession
+    case failed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .noSession: "手机已确认，但没有拿到登录凭证，请重试。"
+        case .failed(let message): "网页登录出错：\(message)"
+        }
     }
 }
