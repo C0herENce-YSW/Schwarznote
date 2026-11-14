@@ -181,6 +181,44 @@ final class XHSClient {
         ]))
     }
 
+    // MARK: - Search
+
+    /// One page of notes matching `keyword`, in 小红书's ranking for `sort`. Pages start at 1.
+    func searchNotes(keyword: String, page: Int, searchID: String, sort: SearchSort,
+                     noteType: SearchNoteType) async throws -> Pager<Note>.Page {
+        let payload: SearchNotesPage = try await post("/api/sns/web/v1/search/notes", body: [
+            "keyword": keyword,
+            "page": page,
+            "page_size": 20,
+            "search_id": searchID,
+            "sort": sort.rawValue,
+            "note_type": noteType.rawValue,
+            "ext_flags": [Any](),
+            "filters": [Any](),
+            "geo": "",
+            "image_formats": ["jpg", "webp", "avif"],
+        ])
+        return .init(items: payload.notes, cursor: String(page + 1), hasMore: payload.hasMore)
+    }
+
+    /// Completions for a partly typed query.
+    func searchSuggestions(for keyword: String) async throws -> [String] {
+        let payload: SearchWordsPayload = try await get(
+            "/api/sns/web/v1/search/recommend" + Self.query(["keyword": keyword])
+        )
+        return payload.words
+    }
+
+    /// 猜你想搜: what 小红书 suggests before anything is typed.
+    func trendingSearches() async throws -> [String] {
+        let payload: SearchWordsPayload = try await get("/api/sns/web/v1/search/querytrending" + Self.query([
+            "source": "Explore", "search_type": "trend", "last_query": "", "last_query_time": "0",
+            "word_request_situation": "FIRST_ENTER", "hint_word": "", "hint_word_type": "",
+            "hint_word_request_id": "",
+        ]))
+        return payload.words
+    }
+
     // MARK: - Users
 
     /// Someone else's profile. `xsecSource` is where it was opened from ("pc_note" from a note).

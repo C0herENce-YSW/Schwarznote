@@ -142,23 +142,6 @@ struct TopTabBar: View {
     }
 }
 
-struct SearchView: View {
-    @State private var query = ""
-
-    var body: some View {
-        NavigationStack {
-            ContentUnavailableView(
-                query.isEmpty ? "搜索笔记、用户" : "搜索“\(query)”",
-                systemImage: "magnifyingglass",
-                description: Text("搜索需要接通登录后才能使用")
-            )
-            .searchable(text: $query, prompt: "搜索小红书")
-        }
-        // Nothing to scroll here yet, so the page is always at the top.
-        .backButtonReturnsToTop(isAtTop: true) {}
-    }
-}
-
 /// Shown for features that need an account.
 struct LoginRequiredView: View {
     let feature: String
