@@ -70,6 +70,7 @@ final class QRLoginModel {
         var guestSession = await login.sessionCookie()
         let deadline = ContinuousClock.now + .seconds(600)
         var lastLog = ""
+        var completionFailures = 0
 
         while ContinuousClock.now < deadline {
             try await Task.sleep(for: .seconds(1))
@@ -95,8 +96,19 @@ final class QRLoginModel {
             }
             // The page may skip straight past "confirmed" and reload, so watch for the new session.
             if let session, session != guestSession {
-                if (try? await auth.completeWebLogin()) != nil { return }
-                guestSession = session
+                do {
+                    try await auth.completeWebLogin()
+                    return
+                } catch WebLoginError.noSession {
+                    // Just a new guest session: keep waiting for the scan.
+                    guestSession = session
+                } catch {
+                    // Logged in on the page, but the app couldn't take it over: say why instead
+                    // of waiting on a page that has already moved on.
+                    completionFailures += 1
+                    Self.log.error("taking over the login failed: \(error.localizedDescription, privacy: .public)")
+                    if completionFailures >= 3 { throw error }
+                }
             }
         }
         throw WebLoginError.failed("登录超时，请重试")

@@ -340,7 +340,8 @@ final class XHSClient {
     #if DEBUG
     /// Login and account responses carry session tokens; log only their code and message.
     private static func loggableBody(_ data: Data, path: String) -> String {
-        let sensitive = ["/login/qrcode/status", "/login/activate", "/user/me"]
+        // The scan status also carries the scanning account's id and country.
+        let sensitive = ["/login/qrcode/status", "/login/activate", "/user/me", "/qrcode/userinfo"]
         guard sensitive.contains(where: path.contains) else {
             return String(decoding: data.prefix(500), as: UTF8.self)
         }

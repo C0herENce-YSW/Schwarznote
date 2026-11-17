@@ -118,43 +118,67 @@ final class WebSigner: RequestSigner {
     /// interceptors add, and aborts it before anything leaves.
     private static let captureScript = """
         const body = bodyJSON === null ? null : JSON.parse(bodyJSON);
-        if (!window.__signerHttp) {
-          const chunk = Object.keys(window).find((k) => k.startsWith("webpackChunk"));
-          if (!chunk) throw new Error("site modules not loaded");
-          let require;
-          window[chunk].push([[Symbol("signer")], {}, (r) => { require = r; }]);
-          // The site's shared HTTP client, exported from its request module as `LV`.
-          window.__signerHttp = Object.values(require.c)
-            .map((m) => m && m.exports && m.exports.LV)
-            .find((http) => http && typeof http.post === "function" && http.interceptors);
-          if (!window.__signerHttp) throw new Error("site HTTP client not found");
+
+        // Sends one request through `http`, records its URL and headers, and aborts it.
+        const capture = async (http) => {
+          const proto = XMLHttpRequest.prototype;
+          const original = { open: proto.open, setRequestHeader: proto.setRequestHeader, send: proto.send };
+          const restore = () => Object.assign(proto, original);
+          try {
+            return await new Promise((resolve, reject) => {
+              const timer = setTimeout(() => reject(new Error("timed out waiting for the request")), 10000);
+              proto.open = function (m, url) {
+                this.__signerURL = String(url);
+                return original.open.apply(this, arguments);
+              };
+              proto.setRequestHeader = function (key, value) {
+                (this.__signerHeaders ||= {})[key] = String(value);
+                return original.setRequestHeader.apply(this, arguments);
+              };
+              proto.send = function () {
+                clearTimeout(timer);
+                restore();
+                resolve({ url: this.__signerURL, headers: this.__signerHeaders || {} });
+                this.abort();
+              };
+              const request = method === "GET" ? http.get(path) : http.post(path, body);
+              if (request && request.catch) request.catch(() => {});
+            });
+          } finally {
+            restore();
+          }
+        };
+        const signed = (result) => Object.keys(result.headers).some((k) => k.toLowerCase() === "x-s");
+
+        if (window.__signerHttp) return await capture(window.__signerHttp);
+
+        // Find the site's own HTTP client: the one whose requests come out signed. Its export
+        // name changes between builds (`LV` on rednote.com, another on xiaohongshu.com).
+        const chunk = Object.keys(window).find((k) => k.startsWith("webpackChunk"));
+        if (!chunk) throw new Error("site modules not loaded");
+        let require;
+        window[chunk].push([[Symbol("signer")], {}, (r) => { require = r; }]);
+        const candidates = new Set();
+        for (const m of Object.values(require.c)) {
+          const e = m && m.exports;
+          if (!e || e === window) continue;
+          let values = [e];
+          try { values = values.concat(Object.keys(e).map((k) => e[k])); } catch (err) {}
+          for (const v of values) {
+            if (v && v !== window && typeof v.post === "function" && typeof v.get === "function" && v.interceptors) {
+              candidates.add(v);
+            }
+          }
         }
-        const proto = XMLHttpRequest.prototype;
-        const original = { open: proto.open, setRequestHeader: proto.setRequestHeader, send: proto.send };
-        const restore = () => Object.assign(proto, original);
-        try {
-          return await new Promise((resolve, reject) => {
-            const timer = setTimeout(() => reject(new Error("timed out waiting for the request")), 10000);
-            proto.open = function (m, url) {
-              this.__signerURL = String(url);
-              return original.open.apply(this, arguments);
-            };
-            proto.setRequestHeader = function (key, value) {
-              (this.__signerHeaders ||= {})[key] = String(value);
-              return original.setRequestHeader.apply(this, arguments);
-            };
-            proto.send = function () {
-              clearTimeout(timer);
-              restore();
-              resolve({ url: this.__signerURL, headers: this.__signerHeaders || {} });
-              this.abort();
-            };
-            const http = window.__signerHttp;
-            const request = method === "GET" ? http.get(path) : http.post(path, body);
-            request.catch(() => {});
-          });
-        } finally {
-          restore();
+        for (const http of candidates) {
+          let result;
+          try { result = await capture(http); } catch (err) { continue; }
+          if (signed(result)) {
+            window.__signerHttp = http;
+            return result;
+          }
         }
+        throw new Error("site HTTP client not found on " + location.host + location.pathname
+          + " (" + candidates.size + " candidates)");
         """
 }
