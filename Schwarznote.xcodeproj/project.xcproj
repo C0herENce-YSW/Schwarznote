@@ -41,7 +41,7 @@
         "GENERATE_INFOPLIST_FILE": "YES",
         "INFOPLIST_FILE": "Schwarznote-Info.plist",
         "INFOPLIST_KEY_LSApplicationCategoryType": "public.app-category.entertainment",
-        "INFOPLIST_KEY_NSLocalNetworkUsageDescription": "用于连接你 Mac 上的签名服务",
+        "INFOPLIST_KEY_NSLocalNetworkUsageDescription": "1",
         "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
         "INFOPLIST_KEY_UIUserInterfaceStyle": "Automatic",
         "LD_RUNPATH_SEARCH_PATHS": [
@@ -49,7 +49,7 @@
           "@executable_path/Frameworks",
         ],
         "MARKETING_VERSION": "1.0",
-        "PRODUCT_BUNDLE_IDENTIFIER": "com.seal-yue.Schwarznote",
+        "PRODUCT_BUNDLE_IDENTIFIER": "com.seal-yue.Zwartnote",
         "PRODUCT_NAME": "$(TARGET_NAME)",
         "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
         "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
